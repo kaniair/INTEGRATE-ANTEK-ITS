@@ -4,7 +4,7 @@
     {
       "label": "Install Dependencies",
       "type": "shell",
-      "command": "pip install -r requirements.txt",
+      "command": ".\\venv\\Scripts\\pip.exe install -r requirements-app.txt",
       "group": "build",
       "presentation": {
         "echo": true,
@@ -16,7 +16,7 @@
     {
       "label": "Run Streamlit App",
       "type": "shell",
-      "command": "streamlit run src/app.py --server.port=8501",
+      "command": ".\\venv\\Scripts\\streamlit.exe run src/app.py --server.port=8501",
       "group": {
         "kind": "build",
         "isDefault": true
@@ -31,7 +31,7 @@
     {
       "label": "Format with Black",
       "type": "shell",
-      "command": "black src/ --line-length 88",
+      "command": ".\\venv\\Scripts\\python.exe -m black src/ --line-length 88",
       "group": "build",
       "presentation": {
         "echo": true,
@@ -43,7 +43,7 @@
     {
       "label": "Lint with flake8",
       "type": "shell",
-      "command": "flake8 src/ --max-line-length=88 --extend-ignore=E203,W503",
+      "command": ".\\venv\\Scripts\\python.exe -m flake8 src/ --max-line-length=88 --extend-ignore=E203,W503,E501",
       "group": "test",
       "presentation": {
         "echo": true,
@@ -55,7 +55,7 @@
     {
       "label": "Run Tests",
       "type": "shell",
-      "command": "pytest tests/ -v",
+      "command": ".\\venv\\Scripts\\pytest.exe tests/ -v",
       "group": {
         "kind": "test",
         "isDefault": true
@@ -82,7 +82,7 @@
     {
       "label": "Create Virtualenv",
       "type": "shell",
-      "command": "python -m venv venv && venv/Scripts/activate && pip install -r requirements.txt",
+      "command": "py -m venv venv && .\\venv\\Scripts\\pip.exe install -r requirements-app.txt",
       "group": "build",
       "presentation": {
         "echo": true,
