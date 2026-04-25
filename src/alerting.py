@@ -10,13 +10,18 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
 
-def send_anomaly_alert(equipment_id: str, equipment_type: str,
-                       anomaly_class: str, mae_value: float,
-                       threshold: float, parameters: dict,
-                       recommended_action: str):
+def send_anomaly_alert(
+    equipment_id: str,
+    equipment_type: str,
+    anomaly_class: str,
+    mae_value: float,
+    threshold: float,
+    parameters: dict,
+    recommended_action: str,
+):
     """
     Send automated email alert when anomaly is detected.
-    
+
     Parameters
     ----------
     equipment_id : str
@@ -42,7 +47,9 @@ def send_anomaly_alert(equipment_id: str, equipment_type: str,
 
     if not smtp_user or not smtp_pass:
         print("[Alert] Email credentials not configured. Skipping email alert.")
-        print(f"[Alert] ANOMALY DETECTED: {equipment_id} | Class: {anomaly_class} | MAE: {mae_value:.4f}")
+        print(
+            f"[Alert] ANOMALY DETECTED: {equipment_id} | Class: {anomaly_class} | MAE: {mae_value:.4f}"
+        )
         return False
 
     recipients = [r.strip() for r in recipients_str.split(",") if r.strip()]
@@ -52,7 +59,9 @@ def send_anomaly_alert(equipment_id: str, equipment_type: str,
 
     # ── Build email ──
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"[INTEGRATE] {equipment_type.upper()} Anomali — {equipment_id} — {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+    msg["Subject"] = (
+        f"[INTEGRATE] {equipment_type.upper()} Anomali — {equipment_id} — {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+    )
     msg["From"] = smtp_user
     msg["To"] = ", ".join(recipients)
 
@@ -78,10 +87,12 @@ Pesan ini dikirim otomatis. Jangan balas email ini.
 """
 
     # HTML version
-    params_rows = "".join([
-        f"<tr><td style='padding:4px 8px;font-weight:bold;'>{k}</td><td style='padding:4px 8px;'>{v}</td></tr>"
-        for k, v in parameters.items()
-    ])
+    params_rows = "".join(
+        [
+            f"<tr><td style='padding:4px 8px;font-weight:bold;'>{k}</td><td style='padding:4px 8px;'>{v}</td></tr>"
+            for k, v in parameters.items()
+        ]
+    )
 
     html_body = f"""
 <html>
@@ -146,19 +157,21 @@ def get_recommended_action(anomaly_class: str, equipment_type: str) -> str:
     actions = {
         "pump": {
             "Equipment": "Cek mechanical seal dan bearing. Lakukan inspeksi visual segera. Koordinasi dengan maintenance.",
-            "Proses":    "Periksa kondisi proses upstream/downstream. Cek valve posisi dan flow control.",
-            "Startup":   "Monitor parameter startup. Pastikan sequence startup sesuai SOP.",
-            "Nominasi":  "Evaluasi operating point terhadap kurva performa. Pertimbangkan penyesuaian laju produksi.",
-            "Normal":    "Tidak ada tindakan diperlukan. Lanjutkan pemantauan rutin.",
-            "Unknown":   "Lakukan inspeksi manual dan konsultasi dengan engineer lapangan."
+            "Proses": "Periksa kondisi proses upstream/downstream. Cek valve posisi dan flow control.",
+            "Startup": "Monitor parameter startup. Pastikan sequence startup sesuai SOP.",
+            "Nominasi": "Evaluasi operating point terhadap kurva performa. Pertimbangkan penyesuaian laju produksi.",
+            "Normal": "Tidak ada tindakan diperlukan. Lanjutkan pemantauan rutin.",
+            "Unknown": "Lakukan inspeksi manual dan konsultasi dengan engineer lapangan.",
         },
         "compressor": {
             "Equipment": "SEGERA: Cek ASV/GCBV status. Lakukan inspeksi kompresor. Siapkan backup unit.",
-            "Startup":   "Monitor parameter startup kompresor. Pastikan anti-surge control aktif.",
+            "Startup": "Monitor parameter startup kompresor. Pastikan anti-surge control aktif.",
             "Surge_Zone": "KRITIS: Buka Anti-Surge Valve segera! Kurangi beban kompresor. Hubungi engineer.",
             "Part_Load": "Evaluasi kondisi operasi part-load. Monitor surge margin secara ketat.",
-            "Normal":    "Tidak ada tindakan diperlukan. Surge margin dalam batas aman.",
-            "Unknown":   "Lakukan inspeksi manual dan konsultasi dengan engineer lapangan."
-        }
+            "Normal": "Tidak ada tindakan diperlukan. Surge margin dalam batas aman.",
+            "Unknown": "Lakukan inspeksi manual dan konsultasi dengan engineer lapangan.",
+        },
     }
-    return actions.get(equipment_type, {}).get(anomaly_class, "Konsultasi dengan engineer lapangan.")
+    return actions.get(equipment_type, {}).get(
+        anomaly_class, "Konsultasi dengan engineer lapangan."
+    )

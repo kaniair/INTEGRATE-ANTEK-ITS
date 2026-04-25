@@ -11,13 +11,13 @@ import os
 from datetime import datetime
 from sklearn.preprocessing import MinMaxScaler
 
-
 DB_PATH = os.getenv("DB_PATH", "integrate.db")
 
 
 # ─────────────────────────────────────────────
 # DATABASE INITIALIZATION
 # ─────────────────────────────────────────────
+
 
 def init_database():
     """Create tables if not exist."""
@@ -90,18 +90,19 @@ def init_database():
 # DATA LOADING — PUMP
 # ─────────────────────────────────────────────
 
+
 def load_pump_csv(filepath: str, equipment_id: str = "P-9027A") -> pd.DataFrame:
     """
     Load pump operational data from CSV/Excel.
     Compatible with Exaquantum export format (JTB & DMF).
-    
+
     Parameters
     ----------
     filepath : str
         Path to CSV or Excel file
     equipment_id : str
         Equipment tag (e.g., P-9027A, P-1001A)
-    
+
     Returns
     -------
     pd.DataFrame
@@ -133,14 +134,18 @@ def load_pump_csv(filepath: str, equipment_id: str = "P-9027A") -> pd.DataFrame:
 
     # ── Handle Missing Values ──
     numeric_cols = df.select_dtypes(include=[np.number]).columns
-    df[numeric_cols] = df[numeric_cols].interpolate(method="linear", limit_direction="both")
+    df[numeric_cols] = df[numeric_cols].interpolate(
+        method="linear", limit_direction="both"
+    )
     df.dropna(inplace=True)
 
     # ── IQR Outlier Removal ──
     Q1 = df[numeric_cols].quantile(0.25)
     Q3 = df[numeric_cols].quantile(0.75)
     IQR = Q3 - Q1
-    mask = ~((df[numeric_cols] < (Q1 - 1.5 * IQR)) | (df[numeric_cols] > (Q3 + 1.5 * IQR))).any(axis=1)
+    mask = ~(
+        (df[numeric_cols] < (Q1 - 1.5 * IQR)) | (df[numeric_cols] > (Q3 + 1.5 * IQR))
+    ).any(axis=1)
     df = df[mask].reset_index(drop=True)
 
     print(f"[DataLoader] Pump data loaded: {len(df)} records after cleaning")
@@ -189,19 +194,27 @@ def load_compressor_csv(filepath: str, equipment_id: str = "C-1001A") -> pd.Data
             R = 8314
             M = 18
             T_suc_K = df["suction_temperature"] + 273.15  # °F → K conversion if needed
-            df["polytropic_head"] = (n / (n - 1)) * (R / M) * T_suc_K * (
-                df["pressure_ratio"] ** ((n - 1) / n) - 1
-            ) / 1000  # kJ/kg
+            df["polytropic_head"] = (
+                (n / (n - 1))
+                * (R / M)
+                * T_suc_K
+                * (df["pressure_ratio"] ** ((n - 1) / n) - 1)
+                / 1000
+            )  # kJ/kg
 
     # ── Missing Values & Outliers ──
     numeric_cols = df.select_dtypes(include=[np.number]).columns
-    df[numeric_cols] = df[numeric_cols].interpolate(method="linear", limit_direction="both")
+    df[numeric_cols] = df[numeric_cols].interpolate(
+        method="linear", limit_direction="both"
+    )
     df.dropna(inplace=True)
 
     Q1 = df[numeric_cols].quantile(0.25)
     Q3 = df[numeric_cols].quantile(0.75)
     IQR = Q3 - Q1
-    mask = ~((df[numeric_cols] < (Q1 - 1.5 * IQR)) | (df[numeric_cols] > (Q3 + 1.5 * IQR))).any(axis=1)
+    mask = ~(
+        (df[numeric_cols] < (Q1 - 1.5 * IQR)) | (df[numeric_cols] > (Q3 + 1.5 * IQR))
+    ).any(axis=1)
     df = df[mask].reset_index(drop=True)
 
     print(f"[DataLoader] Compressor data loaded: {len(df)} records after cleaning")
@@ -211,6 +224,7 @@ def load_compressor_csv(filepath: str, equipment_id: str = "C-1001A") -> pd.Data
 # ─────────────────────────────────────────────
 # SAVE TO DATABASE
 # ─────────────────────────────────────────────
+
 
 def save_pump_to_db(df: pd.DataFrame):
     """Save pump dataframe to SQLite."""
@@ -232,18 +246,39 @@ def save_compressor_to_db(df: pd.DataFrame):
     print(f"[DB] Saved {len(df_save)} compressor records to database.")
 
 
-def log_anomaly(equipment_id: str, equipment_type: str, anomaly_type: str,
-                ml_class: str, confidence: float, mae: float,
-                threshold: float, status: str, action: str):
+def log_anomaly(
+    equipment_id: str,
+    equipment_type: str,
+    anomaly_type: str,
+    ml_class: str,
+    confidence: float,
+    mae: float,
+    threshold: float,
+    status: str,
+    action: str,
+):
     """Insert anomaly detection result to anomaly_log table."""
     conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
+    conn.execute(
+        """
         INSERT INTO anomaly_log 
         (timestamp, equipment_id, equipment_type, anomaly_type, ml_class,
          confidence, mae_value, threshold, status, recommended_action)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (datetime.now().isoformat(), equipment_id, equipment_type,
-          anomaly_type, ml_class, confidence, mae, threshold, status, action))
+    """,
+        (
+            datetime.now().isoformat(),
+            equipment_id,
+            equipment_type,
+            anomaly_type,
+            ml_class,
+            confidence,
+            mae,
+            threshold,
+            status,
+            action,
+        ),
+    )
     conn.commit()
     conn.close()
 
@@ -252,8 +287,7 @@ def get_anomaly_log(limit: int = 50) -> pd.DataFrame:
     """Retrieve latest anomaly log from database."""
     conn = sqlite3.connect(DB_PATH)
     df = pd.read_sql(
-        f"SELECT * FROM anomaly_log ORDER BY created_at DESC LIMIT {limit}",
-        conn
+        f"SELECT * FROM anomaly_log ORDER BY created_at DESC LIMIT {limit}", conn
     )
     conn.close()
     return df
@@ -264,7 +298,8 @@ def get_latest_pump_data(equipment_id: str, n: int = 100) -> pd.DataFrame:
     conn = sqlite3.connect(DB_PATH)
     df = pd.read_sql(
         f"SELECT * FROM pump_data WHERE equipment_id=? ORDER BY timestamp DESC LIMIT {n}",
-        conn, params=(equipment_id,)
+        conn,
+        params=(equipment_id,),
     )
     conn.close()
     return df.sort_values("timestamp")
@@ -275,7 +310,8 @@ def get_latest_compressor_data(equipment_id: str, n: int = 100) -> pd.DataFrame:
     conn = sqlite3.connect(DB_PATH)
     df = pd.read_sql(
         f"SELECT * FROM compressor_data WHERE equipment_id=? ORDER BY timestamp DESC LIMIT {n}",
-        conn, params=(equipment_id,)
+        conn,
+        params=(equipment_id,),
     )
     conn.close()
     return df.sort_values("timestamp")

@@ -12,26 +12,34 @@ import json
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import f1_score, classification_report
 
-
 # ─────────────────────────────────────────────
 # CONSTANTS
 # ─────────────────────────────────────────────
 
 PUMP_FEATURES = [
-    "flow_rate", "suction_pressure", "discharge_pressure",
-    "temperature", "motor_current", "seal_pressure"
+    "flow_rate",
+    "suction_pressure",
+    "discharge_pressure",
+    "temperature",
+    "motor_current",
+    "seal_pressure",
 ]
 
 COMP_FEATURES = [
-    "suction_pressure", "discharge_pressure", "suction_temperature",
-    "discharge_temperature", "inlet_flow", "shaft_power", "pressure_ratio"
+    "suction_pressure",
+    "discharge_pressure",
+    "suction_temperature",
+    "discharge_temperature",
+    "inlet_flow",
+    "shaft_power",
+    "pressure_ratio",
 ]
 
 SEQUENCE_LENGTH = 10  # timesteps per window
 
 ANOMALY_CLASSES = {
     "pump": ["Normal", "Startup", "Proses", "Nominasi", "Equipment"],
-    "comp": ["Normal", "Startup", "Surge_Zone", "Part_Load", "Equipment"]
+    "comp": ["Normal", "Startup", "Surge_Zone", "Part_Load", "Equipment"],
 }
 
 
@@ -39,13 +47,15 @@ ANOMALY_CLASSES = {
 # LSTM AUTOENCODER — BUILD
 # ─────────────────────────────────────────────
 
-def build_bilstm_autoencoder(n_features: int, latent_units: int = 8,
-                              dropout_rate: float = 0.2):
+
+def build_bilstm_autoencoder(
+    n_features: int, latent_units: int = 8, dropout_rate: float = 0.2
+):
     """
     Build BiLSTM Autoencoder architecture.
     Encoder: BiLSTM(32) → BiLSTM(latent_units)
     Decoder: BiLSTM(latent_units) → BiLSTM(32) → TimeDistributed Dense
-    
+
     Parameters
     ----------
     n_features : int
@@ -59,8 +69,13 @@ def build_bilstm_autoencoder(n_features: int, latent_units: int = 8,
         import tensorflow as tf
         from tensorflow.keras.models import Model
         from tensorflow.keras.layers import (
-            Input, LSTM, Bidirectional, RepeatVector,
-            TimeDistributed, Dense, Dropout
+            Input,
+            LSTM,
+            Bidirectional,
+            RepeatVector,
+            TimeDistributed,
+            Dense,
+            Dropout,
         )
 
         inp = Input(shape=(SEQUENCE_LENGTH, n_features))
@@ -93,6 +108,7 @@ def build_bilstm_autoencoder(n_features: int, latent_units: int = 8,
 # SEQUENCE PREPARATION
 # ─────────────────────────────────────────────
 
+
 def create_sequences(data: np.ndarray, seq_len: int = SEQUENCE_LENGTH):
     """Convert 2D array to 3D sequences for LSTM input."""
     sequences = []
@@ -101,8 +117,7 @@ def create_sequences(data: np.ndarray, seq_len: int = SEQUENCE_LENGTH):
     return np.array(sequences)
 
 
-def scale_features(df: pd.DataFrame, feature_cols: list,
-                   scaler_path: str = None):
+def scale_features(df: pd.DataFrame, feature_cols: list, scaler_path: str = None):
     """Fit or load MinMaxScaler and return scaled data."""
     scaler = MinMaxScaler()
 
@@ -126,8 +141,14 @@ def scale_features(df: pd.DataFrame, feature_cols: list,
 # TRAIN AUTOENCODER
 # ─────────────────────────────────────────────
 
-def train_autoencoder(df_normal: pd.DataFrame, feature_cols: list,
-                      model_dir: str, epochs: int = 50, batch_size: int = 32):
+
+def train_autoencoder(
+    df_normal: pd.DataFrame,
+    feature_cols: list,
+    model_dir: str,
+    epochs: int = 50,
+    batch_size: int = 32,
+):
     """
     Train BiLSTM Autoencoder on normal operation data.
     Saves model and threshold to model_dir.
@@ -150,12 +171,13 @@ def train_autoencoder(df_normal: pd.DataFrame, feature_cols: list,
 
     # Train
     history = model.fit(
-        X, X,
+        X,
+        X,
         epochs=epochs,
         batch_size=batch_size,
         validation_split=0.1,
         shuffle=True,
-        verbose=1
+        verbose=1,
     )
 
     # Save model
@@ -170,11 +192,15 @@ def train_autoencoder(df_normal: pd.DataFrame, feature_cols: list,
 
     threshold_path = os.path.join(model_dir, "threshold.json")
     with open(threshold_path, "w") as f:
-        json.dump({
-            "threshold": threshold,
-            "mae_mean": float(np.mean(mae_scores)),
-            "mae_std": float(np.std(mae_scores))
-        }, f, indent=2)
+        json.dump(
+            {
+                "threshold": threshold,
+                "mae_mean": float(np.mean(mae_scores)),
+                "mae_std": float(np.std(mae_scores)),
+            },
+            f,
+            indent=2,
+        )
 
     print(f"[ML] Anomaly threshold: {threshold:.4f}")
     return model, threshold
@@ -183,6 +209,7 @@ def train_autoencoder(df_normal: pd.DataFrame, feature_cols: list,
 # ─────────────────────────────────────────────
 # PREDICT / DETECT ANOMALY
 # ─────────────────────────────────────────────
+
 
 def detect_anomaly(df: pd.DataFrame, feature_cols: list, model_dir: str):
     """
@@ -211,6 +238,7 @@ def detect_anomaly(df: pd.DataFrame, feature_cols: list, model_dir: str):
     # Load model and predict
     try:
         import tensorflow as tf
+
         model = tf.keras.models.load_model(model_path)
         X_pred = model.predict(X, verbose=0)
         mae_scores = np.mean(np.abs(X_pred - X), axis=(1, 2))
@@ -237,8 +265,13 @@ def detect_anomaly(df: pd.DataFrame, feature_cols: list, model_dir: str):
 # XGBOOST CLASSIFIER
 # ─────────────────────────────────────────────
 
-def train_classifier(X_train: pd.DataFrame, y_train: pd.Series,
-                     model_dir: str, equipment_type: str = "pump"):
+
+def train_classifier(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    model_dir: str,
+    equipment_type: str = "pump",
+):
     """
     Train XGBoost + SMOTE classifier for anomaly type classification.
     Target F1-score > 0.85.
@@ -262,7 +295,7 @@ def train_classifier(X_train: pd.DataFrame, y_train: pd.Series,
         colsample_bytree=0.8,
         use_label_encoder=False,
         eval_metric="mlogloss",
-        random_state=42
+        random_state=42,
     )
     clf.fit(X_resampled, y_resampled)
 
@@ -275,8 +308,9 @@ def train_classifier(X_train: pd.DataFrame, y_train: pd.Series,
     return clf
 
 
-def classify_anomaly(features: np.ndarray, model_dir: str,
-                     equipment_type: str = "pump"):
+def classify_anomaly(
+    features: np.ndarray, model_dir: str, equipment_type: str = "pump"
+):
     """
     Predict anomaly class using trained XGBoost classifier.
     Returns (class_label, confidence)
