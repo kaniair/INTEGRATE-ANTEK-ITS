@@ -1,0 +1,25 @@
+# Core
+streamlit==1.35.0
+pandas==2.1.4
+numpy==1.26.4
+scipy==1.12.0
+
+# Machine Learning
+tensorflow==2.15.0
+scikit-learn==1.4.0
+xgboost==2.0.3
+imbalanced-learn==0.12.0
+optuna==3.5.0
+
+# Database
+sqlalchemy==2.0.27
+
+# Visualization
+plotly==5.18.0
+
+# Rule Engine
+rule-engine==4.4.0
+
+# Utilities
+openpyxl==3.1.2
+python-dotenv==1.0.1
