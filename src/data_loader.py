@@ -118,12 +118,17 @@ def load_pump_csv(filepath: str, equipment_id: str = "P-9027A") -> pd.DataFrame:
     # Standardize column names (lowercase, strip spaces)
     df.columns = df.columns.str.lower().str.strip().str.replace(" ", "_")
 
-    # Try to detect timestamp column
+   # Try to detect timestamp column
     ts_candidates = ["timestamp", "datetime", "time", "date", "waktu"]
     ts_col = next((c for c in ts_candidates if c in df.columns), None)
+    
     if ts_col:
-        df["timestamp"] = pd.to_datetime(df[ts_col])
-        df.drop(columns=[ts_col], errors="ignore", inplace=True)
+        # Pengecekan agar kolom tidak terhapus jika namanya sudah 'timestamp'
+        if ts_col != "timestamp":
+            df["timestamp"] = pd.to_datetime(df[ts_col])
+            df.drop(columns=[ts_col], errors="ignore", inplace=True)
+        else:
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
     else:
         df["timestamp"] = pd.date_range(
             start=datetime.now(), periods=len(df), freq="15min"
@@ -136,12 +141,12 @@ def load_pump_csv(filepath: str, equipment_id: str = "P-9027A") -> pd.DataFrame:
     df[numeric_cols] = df[numeric_cols].interpolate(method="linear", limit_direction="both")
     df.dropna(inplace=True)
 
-    # ── IQR Outlier Removal ──
-    Q1 = df[numeric_cols].quantile(0.25)
-    Q3 = df[numeric_cols].quantile(0.75)
-    IQR = Q3 - Q1
-    mask = ~((df[numeric_cols] < (Q1 - 1.5 * IQR)) | (df[numeric_cols] > (Q3 + 1.5 * IQR))).any(axis=1)
-    df = df[mask].reset_index(drop=True)
+    # ── IQR Outlier Removal (MATIKAN SEMENTARA UNTUK DEMO HACKATHON) ──
+    # Q1 = df[numeric_cols].quantile(0.25)
+    # Q3 = df[numeric_cols].quantile(0.75)
+    # IQR = Q3 - Q1
+    # mask = ~((df[numeric_cols] < (Q1 - 1.5 * IQR)) | (df[numeric_cols] > (Q3 + 1.5 * IQR))).any(axis=1)
+    # df = df[mask].reset_index(drop=True)
 
     print(f"[DataLoader] Pump data loaded: {len(df)} records after cleaning")
     return df
@@ -162,11 +167,16 @@ def load_compressor_csv(filepath: str, equipment_id: str = "C-1001A") -> pd.Data
     df.columns = df.columns.str.lower().str.strip().str.replace(" ", "_")
 
     # Timestamp
+    # Timestamp
     ts_candidates = ["timestamp", "datetime", "time", "date", "waktu"]
     ts_col = next((c for c in ts_candidates if c in df.columns), None)
+    
     if ts_col:
-        df["timestamp"] = pd.to_datetime(df[ts_col])
-        df.drop(columns=[ts_col], errors="ignore", inplace=True)
+        if ts_col != "timestamp":
+            df["timestamp"] = pd.to_datetime(df[ts_col])
+            df.drop(columns=[ts_col], errors="ignore", inplace=True)
+        else:
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
     else:
         df["timestamp"] = pd.date_range(
             start=datetime.now(), periods=len(df), freq="15min"
