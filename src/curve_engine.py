@@ -78,30 +78,39 @@ def load_compressor_curves(curves_path: str = "curves/compressor_curves.json") -
 
 def _default_pump_curves() -> dict:
     """
-    Default sample curves — replace with actual datasheet coefficients
-    extracted using WebPlotDigitizer.
+    Pump performance curves untuk 340-P-1005 A/B (DMF).
+    Default fallback jika file JSON tidak ditemukan.
     """
     return {
-        "equipment_id": "P-1001A",
-        "head_flow": {
-            "por_min_flow": 60.0,   # % of rated flow
-            "por_max_flow": 110.0,
-            "aor_min_flow": 40.0,
-            "aor_max_flow": 120.0,
-            "rated_flow": 371.0,    # kBPD or m³/h
-            "rated_head": 1954.0,   # ft or m
-            "coefficients": [-0.0012, -0.1, 1954.0]  # ax² + bx + c
+        "equipment_id": "340-P-1005 A/B",
+        "head": {
+            "rated_flow": 600.2,
+            "rated_head_ft": 1795.9,
+            "por_min_flow": 420.0,
+            "por_max_flow": 711.6,
+            "aor_min_flow": 115.0,
+            "aor_max_flow": 750.0,
+            "max_diameter": {
+                "coefficients": [4e-12, -6e-9, 3e-7,  0.0003, -0.1651, 2353.8]
+            },
+            "rated": {
+                "coefficients": [5e-13,  1e-9, -4e-6,  0.0013, -0.2108, 2146.9]
+            },
+            "min_diameter": {
+                "coefficients": [-8e-13, 4e-9, -6e-6,  0.0016, -0.1897, 1858.3]
+            }
         },
         "npsh": {
-            "npsha": 25.0,          # ft — available NPSH
-            "npshr_coefficients": [0.0001, 0.05, 3.0]  # NPSHr curve
+            "npsha_formula": "dynamic",
+            "vapor_pressure_psia": 1.02,
+            "specific_gravity": 1.084,
+            "npshr_coefficients": [-2e-13, 3e-10, -2e-7, 0.0001, -0.0032, 7.8808]
         },
         "power": {
-            "rated_power": 450.0,   # kW
-            "coefficients": [0.001, 0.5, 50.0]
+            "rated_power_hp": 500.0,
+            "coefficients": [1e-12, -2e-9, 1e-6, 0.0002, 0.1081, 292.41]
         }
     }
-
 
 def _default_compressor_curves() -> dict:
     """
@@ -151,15 +160,15 @@ def check_pump_performance(equipment_id: str,
     """
     alerts = []
 
-    hf = curves["head_flow"]
+    hf = curves["head"]
     rated_flow = hf["rated_flow"]
-    por_min = hf["por_min_flow"] / 100 * rated_flow
-    por_max = hf["por_max_flow"] / 100 * rated_flow
-    aor_min = hf["aor_min_flow"] / 100 * rated_flow
-    aor_max = hf["aor_max_flow"] / 100 * rated_flow
+    por_min = hf["por_min_flow"]
+    por_max = hf["por_max_flow"] 
+    aor_min = hf["aor_min_flow"]
+    aor_max = hf["aor_max_flow"]
 
     # ── Head vs Flow: calculate expected head at current flow ──
-    coeff = hf["coefficients"]
+    coeff = hf["rated"]["coefficients"]
     expected_head = np.polyval(coeff, flow)
     head_deviation = abs(head - expected_head) / expected_head * 100
 
@@ -187,7 +196,7 @@ def check_pump_performance(equipment_id: str,
 
     # ── Power check ──
     power_coeff = curves["power"]["coefficients"]
-    rated_power = curves["power"]["rated_power"]
+    rated_power = curves["power"]["rated_power_hp"]
     expected_power = np.polyval(power_coeff, flow)
     if power > 1.2 * rated_power:
         zone = PumpZone.OVERLOAD
