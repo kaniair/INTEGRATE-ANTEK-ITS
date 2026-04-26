@@ -1845,11 +1845,17 @@ with tab5:
         _fig_net.add_annotation(x=_xm, y=_ym, text=f"<i>{_lbl}</i>",
                                 font=dict(color="#888", size=8), showarrow=False)
 
+    def _hex_to_rgba(h, a=0.2):
+        h = h.lstrip("#")
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        return f"rgba({r},{g},{b},{a})"
+
     for _nx, _ny, _lbl, _color, _r in _nodes:
         _fig_net.add_shape(type="circle",
                            x0=_nx - _r, y0=_ny - _r * 0.6,
                            x1=_nx + _r, y1=_ny + _r * 0.6,
-                           fillcolor=_color + "33", line=dict(color=_color, width=2))
+                           fillcolor=_hex_to_rgba(_color, 0.2),
+                           line=dict(color=_color, width=2))
         _fig_net.add_annotation(x=_nx, y=_ny, text=f"<b>{_lbl}</b>",
                                 font=dict(color="white", size=9), showarrow=False)
 
@@ -1860,4 +1866,253 @@ with tab5:
         "Seluruh stack menggunakan open-source. Estimasi total biaya hardware: "
         "Rp 180 juta – Rp 250 juta (termasuk industrial PC, switch, firewall, UPS, workstation).**"
     )
+
+    # ── SECTION 7: 3D Hardware Mockup ────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 🖼️ Ilustrasi 3D — Mock-up Instalasi Hardware Lapangan")
+    st.caption("Ilustrasi interaktif — klik & drag untuk merotasi, scroll untuk zoom, klik legend untuk sembunyikan/tampilkan item.")
+
+    def _box3d(x0, y0, z0, x1, y1, z1, color, name, opacity=0.80):
+        """Return a Mesh3d box from (x0,y0,z0) to (x1,y1,z1)."""
+        vx = [x0, x1, x1, x0, x0, x1, x1, x0]
+        vy = [y0, y0, y1, y1, y0, y0, y1, y1]
+        vz = [z0, z0, z0, z0, z1, z1, z1, z1]
+        ii = [0, 0, 4, 4, 0, 0, 2, 2, 0, 0, 1, 1]
+        jj = [1, 2, 5, 6, 1, 5, 3, 7, 3, 7, 2, 6]
+        kk = [2, 3, 6, 7, 5, 4, 7, 6, 7, 4, 6, 5]
+        return go.Mesh3d(
+            x=vx, y=vy, z=vz, i=ii, j=jj, k=kk,
+            color=color, opacity=opacity, name=name,
+            showlegend=True, flatshading=True, hoverinfo="name"
+        )
+
+    def _line3d(xs, ys, zs, color, name, width=4, dash="solid"):
+        return go.Scatter3d(
+            x=xs, y=ys, z=zs, mode="lines",
+            line=dict(color=color, width=width),
+            name=name, showlegend=True
+        )
+
+    def _label3d(xs, ys, zs, texts, color="white", size=11):
+        return go.Scatter3d(
+            x=xs, y=ys, z=zs, mode="text",
+            text=texts, textfont=dict(color=color, size=size),
+            showlegend=False, hoverinfo="skip"
+        )
+
+    _dark_scene = dict(
+        xaxis=dict(showgrid=False, showticklabels=False, title="",
+                   backgroundcolor="#0e1117", showbackground=True, zeroline=False),
+        yaxis=dict(showgrid=False, showticklabels=False, title="",
+                   backgroundcolor="#0e1117", showbackground=True, zeroline=False),
+        zaxis=dict(showgrid=False, showticklabels=False, title="",
+                   backgroundcolor="#0e1117", showbackground=True, zeroline=False),
+        bgcolor="#0e1117",
+    )
+
+    # ── 3D-A: Control Room ──────────────────────────────────────────
+    with st.expander("🏢  Ilustrasi 3D — Ruang Kontrol & Server Rack", expanded=True):
+
+        _cr = go.Figure()
+
+        # Room floor
+        _cr.add_trace(_box3d(0, 0, -0.06, 11, 7, 0, "#1a1a2e", "Lantai Ruang Kontrol", 0.45))
+        # Back wall
+        _cr.add_trace(_box3d(0, 6.9, 0, 11, 7.0, 3.0, "#12122a", "Dinding Belakang", 0.30))
+        # Left wall
+        _cr.add_trace(_box3d(-0.1, 0, 0, 0.0, 7, 3.0, "#12122a", "Dinding Kiri", 0.30))
+
+        # ── Server Rack ──
+        _cr.add_trace(_box3d(0.3, 0.3, 0, 1.2, 1.1, 2.1, "#2c3e50", "Lemari Rack Server", 0.90))
+        # Items in rack (bottom to top)
+        _cr.add_trace(_box3d(0.35, 0.32, 0.08, 1.15, 1.08, 0.55, "#8e44ad", "UPS 1500VA", 0.95))
+        _cr.add_trace(_box3d(0.35, 0.32, 0.60, 1.15, 1.08, 0.76, "#2980b9", "Industrial Switch (Cisco IE-2000)", 0.95))
+        _cr.add_trace(_box3d(0.35, 0.32, 0.78, 1.15, 1.08, 0.94, "#e74c3c", "Industrial Firewall", 0.95))
+        _cr.add_trace(_box3d(0.35, 0.32, 0.96, 1.15, 1.08, 1.12, "#f39c12", "OPC-UA Gateway (KEPServerEX)", 0.95))
+        _cr.add_trace(_box3d(0.35, 0.32, 1.20, 1.15, 1.08, 1.55, "#16a085", "INTEGRATE Edge Server (ADVANTECH)", 0.98))
+        # Rack LED strip
+        _cr.add_trace(_box3d(0.32, 0.30, 1.56, 1.18, 0.34, 1.58, "#00ff88", "Status LED (Online)", 0.9))
+
+        # ── Workstation 1 ──
+        _cr.add_trace(_box3d(2.5, 0.2, 0, 5.2, 1.3, 0.76, "#34495e", "Meja Operator 1", 0.65))
+        _cr.add_trace(_box3d(2.6, 0.55, 0, 3.05, 1.15, 0.42, "#2c3e50", "PC Tower Operator 1", 0.85))
+        _cr.add_trace(_box3d(3.2, 0.28, 0.76, 4.9, 0.44, 1.58, "#00b4d8", "Monitor 27\" Op. 1", 0.88))
+        _cr.add_trace(_box3d(3.8, 1.0, 0.76, 4.3, 1.3, 0.82, "#555", "Keyboard Op. 1", 0.7))
+
+        # ── Workstation 2 ──
+        _cr.add_trace(_box3d(6.0, 0.2, 0, 8.7, 1.3, 0.76, "#34495e", "Meja Operator 2", 0.65))
+        _cr.add_trace(_box3d(6.1, 0.55, 0, 6.55, 1.15, 0.42, "#2c3e50", "PC Tower Operator 2", 0.85))
+        _cr.add_trace(_box3d(6.8, 0.28, 0.76, 8.5, 0.44, 1.58, "#00b4d8", "Monitor 27\" Op. 2", 0.88))
+        _cr.add_trace(_box3d(7.3, 1.0, 0.76, 7.8, 1.3, 0.82, "#555", "Keyboard Op. 2", 0.7))
+
+        # ── Cable Tray (ceiling-mounted) ──
+        _cr.add_trace(_box3d(1.2, 0.55, 1.98, 8.7, 0.75, 2.04, "#7f8c8d", "Cable Tray LAN (Plafon)", 0.60))
+
+        # ── Cables ──
+        # Rack -> WS1
+        _cr.add_trace(_line3d([0.75, 0.75, 4.05, 4.05],
+                              [0.65, 0.65, 0.65, 0.36],
+                              [1.48, 2.01, 2.01, 0.76],
+                              "#f39c12", "Kabel LAN ke WS 1"))
+        # Rack -> WS2
+        _cr.add_trace(_line3d([0.75, 0.75, 7.25, 7.25],
+                              [0.65, 0.65, 0.65, 0.36],
+                              [1.48, 2.01, 2.01, 0.76],
+                              "#e67e22", "Kabel LAN ke WS 2"))
+        # OPC-UA to DCS (exits left wall)
+        _cr.add_trace(_line3d([0.30, -0.5, -0.5],
+                              [0.70, 0.70, 0.70],
+                              [1.10, 1.10, 1.10],
+                              "#8e44ad", "OPC-UA ke Exaquantum/DCS"))
+        # Power cable to rack
+        _cr.add_trace(_line3d([0.75, 0.75],
+                              [1.10, 7.0],
+                              [0.06, 0.06],
+                              "#e74c3c", "Kabel Power (PLN + UPS)"))
+
+        # ── Labels ──
+        _cr.add_trace(_label3d(
+            [0.75,  4.05, 7.25, -0.8],
+            [2.25,  0.3,  0.3,  0.70],
+            [2.30,  1.70, 1.70, 1.30],
+            ["SERVER RACK", "WORKSTATION 1", "WORKSTATION 2", "ke DCS"],
+            color="#00b4d8", size=12
+        ))
+
+        _cr.update_layout(
+            scene=dict(**_dark_scene,
+                       camera=dict(eye=dict(x=1.6, y=-2.2, z=1.3)),
+                       aspectratio=dict(x=2.2, y=1.5, z=0.7)),
+            paper_bgcolor="#0e1117", height=520,
+            margin=dict(l=0, r=0, t=40, b=0),
+            legend=dict(bgcolor="#1a1f2e", bordercolor="#444",
+                        font=dict(color="white", size=10), x=0.0, y=1.0),
+            title=dict(text="3D Mock-up — Ruang Kontrol INTEGRATE (Control Room)",
+                       font=dict(color="#00b4d8", size=13))
+        )
+        st.plotly_chart(_cr, use_container_width=True)
+        st.caption("Klik & drag untuk rotasi | Scroll zoom | Klik nama di legend untuk sembunyikan item")
+
+    # ── 3D-B: Field Equipment & Sensor Placement ────────────────────
+    with st.expander("🔩  Ilustrasi 3D — Pemasangan Sensor pada C-1001B & P-1001A", expanded=True):
+
+        _eq = go.Figure()
+
+        # ════ COMPRESSOR C-1001B ════
+        # Baseplate
+        _eq.add_trace(_box3d(-0.3, 0.5, 0.0,  7.2, 3.5, 0.45, "#7f8c8d", "C-1001B: Baseplate", 0.55))
+        # Main casing
+        _eq.add_trace(_box3d(0.0,  1.0, 0.45, 4.8, 3.0, 1.85, "#2c3e50", "C-1001B: Casing Kompresor (BCL305)", 0.78))
+        # Inlet nozzle
+        _eq.add_trace(_box3d(-1.0, 1.7, 0.85, 0.0, 2.3, 1.45, "#3d566e", "C-1001B: Inlet Nozzle", 0.80))
+        # Discharge nozzle
+        _eq.add_trace(_box3d(4.8,  1.7, 1.30, 5.6, 2.3, 1.85, "#3d566e", "C-1001B: Discharge Nozzle", 0.80))
+        # Motor/driver
+        _eq.add_trace(_box3d(4.8,  1.0, 0.45, 7.0, 3.0, 1.65, "#1a252f", "C-1001B: Motor Penggerak", 0.82))
+        # Coupling guard
+        _eq.add_trace(_box3d(4.5,  1.6, 0.85, 4.8, 2.4, 1.35, "#555",    "C-1001B: Coupling Guard",  0.60))
+
+        # ── Sensors C-1001B ──
+        # PT-101 Suction
+        _eq.add_trace(_box3d(-0.8, 1.90, 1.10, -0.50, 2.25, 1.38, "#e74c3c", "PT-101: Suction Press. Tx", 1.0))
+        # PT-102 Discharge
+        _eq.add_trace(_box3d(4.82, 1.90, 1.42,  5.12, 2.25, 1.70, "#e74c3c", "PT-102: Discharge Press. Tx", 1.0))
+        # FT-101 Coriolis flow (inlet pipe)
+        _eq.add_trace(_box3d(-1.80, 1.75, 0.82, -1.00, 2.25, 1.42, "#f39c12", "FT-101: Coriolis Flow Meter", 1.0))
+        # TT-101 Suction temp
+        _eq.add_trace(_box3d(-0.75, 1.55, 0.88, -0.48, 1.80, 1.10, "#3498db", "TT-101: Suction Temp RTD", 1.0))
+        # TT-102 Discharge temp
+        _eq.add_trace(_box3d(4.82, 1.55, 1.08,  5.12, 1.80, 1.30, "#3498db", "TT-102: Discharge Temp RTD", 1.0))
+        # ST-101 Speed sensor (on motor)
+        _eq.add_trace(_box3d(4.82, 2.90, 1.00,  5.12, 3.20, 1.28, "#9b59b6", "ST-101: Speed Sensor", 1.0))
+        # VT-101 Vibration probe (on casing)
+        _eq.add_trace(_box3d(2.00, 3.00, 1.55,  2.40, 3.30, 1.85, "#27ae60", "VT-101: Vibration Probe", 1.0))
+
+        # Junction Box C-1001B
+        _eq.add_trace(_box3d(6.50, 3.00, 1.00,  7.10, 3.50, 1.55, "#f1c40f", "JB-C1001B: Junction Box", 0.90))
+
+        # ════ PUMP P-1001A ════
+        # Baseplate
+        _eq.add_trace(_box3d(-0.2, 5.2, 0.0,  4.3, 7.5, 0.45, "#7f8c8d", "P-1001A: Baseplate", 0.55))
+        # Pump casing
+        _eq.add_trace(_box3d(0.0,  5.5, 0.45, 2.3, 7.2, 1.42, "#2c3e50", "P-1001A: Casing Pompa", 0.78))
+        # Motor
+        _eq.add_trace(_box3d(2.3,  5.6, 0.45, 4.1, 7.1, 1.32, "#1a252f", "P-1001A: Motor Listrik", 0.82))
+        # Suction pipe
+        _eq.add_trace(_box3d(-1.2, 6.1, 0.60, 0.0,  6.6, 1.10, "#3d566e", "P-1001A: Suction Pipe", 0.80))
+        # Discharge pipe (vertical)
+        _eq.add_trace(_box3d(0.8,  7.2, 0.88, 1.4,  7.80, 1.42, "#3d566e", "P-1001A: Discharge Pipe", 0.80))
+
+        # ── Sensors P-1001A ──
+        # FT-201 Flow meter
+        _eq.add_trace(_box3d(-1.80, 6.12, 0.58, -1.20, 6.58, 1.08, "#f39c12", "FT-201: Flow Meter Pompa", 1.0))
+        # PT-201 Suction pressure
+        _eq.add_trace(_box3d(-0.85, 6.20, 0.95, -0.58, 6.52, 1.18, "#e74c3c", "PT-201: Suction Press Pompa", 1.0))
+        # PT-202 Discharge pressure
+        _eq.add_trace(_box3d(0.85,  7.22, 1.12,  1.12, 7.55, 1.38, "#e74c3c", "PT-202: Discharge Press Pompa", 1.0))
+        # TT-201 Temperature
+        _eq.add_trace(_box3d(0.1,   5.40, 1.28,  0.42, 5.68, 1.50, "#3498db", "TT-201: Temperature Pompa", 1.0))
+        # IT-201 Motor current (terminal box on motor)
+        _eq.add_trace(_box3d(3.10,  5.55, 1.10,  3.40, 5.85, 1.35, "#9b59b6", "IT-201: Motor Current Sensor", 1.0))
+        # PT-203 Seal pressure
+        _eq.add_trace(_box3d(0.10,  7.05, 0.88,  0.38, 7.32, 1.10, "#27ae60", "PT-203: Seal Pressure", 1.0))
+
+        # Junction Box P-1001A
+        _eq.add_trace(_box3d(3.60, 7.20, 0.80,  4.20, 7.70, 1.35, "#f1c40f", "JB-P1001A: Junction Box", 0.90))
+
+        # ── Signal cables (thin lines from sensors to JB) ──
+        _sensor_to_jb_c = [
+            ([-0.65, 6.80], [2.075, 3.25], [1.24, 1.28]),  # PT-101
+            ([4.97, 6.80],  [2.075, 3.25], [1.56, 1.28]),  # PT-102
+            ([-1.40, 6.80], [2.00,  3.25], [1.12, 1.28]),  # FT-101
+            ([-0.615,6.80], [1.675, 3.25], [0.99, 1.28]),  # TT-101
+        ]
+        for _xs, _ys, _zs in _sensor_to_jb_c:
+            _eq.add_trace(go.Scatter3d(x=_xs, y=_ys, z=_zs, mode="lines",
+                                       line=dict(color="#aaaaaa", width=1.5),
+                                       showlegend=False, hoverinfo="skip"))
+
+        # ── Labels ──
+        _eq.add_trace(_label3d(
+            [2.4,  1.15,  -0.65,  4.97,  -1.4,   2.20,  5.10,  6.80],
+            [0.50,  0.50,  2.075,  2.075,  2.00,  3.15,  3.25,  3.35],
+            [2.10,  2.10,  1.45,   1.82,   1.55,  2.00,  1.20,  1.65],
+            ["C-1001B\n(BCL305)", "P-1001A",
+             "PT-101", "PT-102", "FT-101", "VT-101", "ST-101", "JB"],
+            color="#00b4d8", size=10
+        ))
+
+        _eq.update_layout(
+            scene=dict(**_dark_scene,
+                       camera=dict(eye=dict(x=1.8, y=-2.8, z=1.6)),
+                       aspectratio=dict(x=2.0, y=2.2, z=0.55)),
+            paper_bgcolor="#0e1117", height=580,
+            margin=dict(l=0, r=0, t=40, b=0),
+            legend=dict(bgcolor="#1a1f2e", bordercolor="#444",
+                        font=dict(color="white", size=9),
+                        x=0.0, y=1.0, itemsizing="constant"),
+            title=dict(text="3D Mock-up — Pemasangan Sensor C-1001B & P-1001A",
+                       font=dict(color="#00b4d8", size=13))
+        )
+        st.plotly_chart(_eq, use_container_width=True)
+
+        # Color legend
+        st.markdown("**Kode Warna Sensor:**")
+        _lcols = st.columns(5)
+        _legends = [
+            ("#e74c3c", "Pressure Transmitter (PT)"),
+            ("#f39c12", "Flow Meter (FT)"),
+            ("#3498db", "Temperature RTD (TT)"),
+            ("#9b59b6", "Speed / Current (ST/IT)"),
+            ("#27ae60", "Vibration / Seal (VT/PT)"),
+        ]
+        for _col, (_clr, _lbl) in zip(_lcols, _legends):
+            with _col:
+                st.markdown(
+                    f"<div style='background:{_clr}33; border:2px solid {_clr}; "
+                    f"border-radius:6px; padding:6px 8px; text-align:center; "
+                    f"color:white; font-size:12px'>{_lbl}</div>",
+                    unsafe_allow_html=True
+                )
+        st.caption("Junction Box kuning = titik pengumpulan kabel sinyal sebelum masuk ke DCS panel.")
 
