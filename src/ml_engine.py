@@ -57,8 +57,8 @@ def build_bilstm_autoencoder(n_features: int, latent_units: int = 8,
     """
     try:
         import tensorflow as tf
-        from tensorflow.keras.models import Model
-        from tensorflow.keras.layers import (
+        from keras.models import Model
+        from keras.layers import (
             Input, LSTM, Bidirectional, RepeatVector,
             TimeDistributed, Dense, Dropout
         )

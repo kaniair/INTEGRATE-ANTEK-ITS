@@ -142,7 +142,7 @@ Pesan ini dikirim otomatis. Jangan balas email ini.
 
 
 def get_recommended_action(anomaly_class: str, equipment_type: str) -> str:
-    """Return maintenance recommendation based on anomaly class."""
+    """Return maintenance recommendation based on anomaly class / zone."""
     actions = {
         "pump": {
             "Equipment": "Cek mechanical seal dan bearing. Lakukan inspeksi visual segera. Koordinasi dengan maintenance.",
@@ -153,12 +153,57 @@ def get_recommended_action(anomaly_class: str, equipment_type: str) -> str:
             "Unknown":   "Lakukan inspeksi manual dan konsultasi dengan engineer lapangan."
         },
         "compressor": {
+            # Zone-based classifications for C-1001B
+            "Z1 - Surge Zone":
+                "🚨 TINDAKAN SEGERA: (1) Buka Anti-Surge Valve (ASV) penuh. "
+                "(2) Kurangi laju produksi/beban kompresor. "
+                "(3) Hubungi engineer lapangan & control room. "
+                "(4) Siapkan prosedur emergency shutdown jika diperlukan.",
+
+            "Z2 - Protection Zone":
+                "⚠️ WASPADA: (1) Monitor surge margin secara real-time. "
+                "(2) Pastikan Anti-Surge Control dalam mode AUTO. "
+                "(3) Hindari penurunan flow lebih lanjut. "
+                "(4) Siapkan operator standby di lapangan.",
+
+            "Z3 - Zona Operasi Optimal":
+                "✅ Kompresor beroperasi optimal antara SpeedB dan Protection Line. "
+                "Pertahankan kondisi operasi saat ini. Lanjutkan monitoring rutin.",
+
+            "Z4 - Zona Operasi Normal":
+                "✅ Kompresor beroperasi normal (antara SpeedC dan SpeedB). "
+                "Kondisi aman. Pantau tren parameter secara berkala.",
+
+            "Z5 - Zona Kecepatan Rendah":
+                "⚠️ Kompresor beroperasi di zona kecepatan rendah (antara SpeedD dan SpeedC). "
+                "(1) Evaluasi set-point speed kompresor. "
+                "(2) Cek kondisi governor / speed controller. "
+                "(3) Monitor efisiensi polirtopik — pertimbangkan optimasi.",
+
+            "Z6 - Zona Kecepatan Minimum":
+                "⚠️ PERHATIAN: Kompresor mendekati batas minimum speed (antara SpeedE dan SpeedD). "
+                "(1) Segera evaluasi speed controller. "
+                "(2) Koordinasi dengan production engineer untuk penyesuaian beban. "
+                "(3) Lakukan inspeksi mechanical lebih awal.",
+
+            "Z7 - Di Bawah Envelope":
+                "⛔ KRITIS: Titik operasi di luar envelope performa normal (di bawah SpeedE). "
+                "(1) Periksa kondisi inlet gas (tekanan, temperatur, komposisi). "
+                "(2) Cek instrument DCS — kemungkinan faulty sensor. "
+                "(3) Hubungi engineer & lakukan verifikasi manual.",
+
+            "Z8 - Stonewall / Choke":
+                "⛔ KRITIS: Kompresor mendekati kondisi Stonewall/Choke. "
+                "(1) Kurangi flow rate segera. "
+                "(2) Periksa kondisi downstream (valve, line obstruction). "
+                "(3) Koordinasi dengan control room untuk penyesuaian operasi.",
+
+            # Legacy/fallback
             "Equipment": "SEGERA: Cek ASV/GCBV status. Lakukan inspeksi kompresor. Siapkan backup unit.",
-            "Startup":   "Monitor parameter startup kompresor. Pastikan anti-surge control aktif.",
             "Surge_Zone": "KRITIS: Buka Anti-Surge Valve segera! Kurangi beban kompresor. Hubungi engineer.",
-            "Part_Load": "Evaluasi kondisi operasi part-load. Monitor surge margin secara ketat.",
-            "Normal":    "Tidak ada tindakan diperlukan. Surge margin dalam batas aman.",
-            "Unknown":   "Lakukan inspeksi manual dan konsultasi dengan engineer lapangan."
+            "Normal":     "Tidak ada tindakan diperlukan. Surge margin dalam batas aman.",
+            "Unknown":    "Lakukan inspeksi manual dan konsultasi dengan engineer lapangan."
         }
     }
-    return actions.get(equipment_type, {}).get(anomaly_class, "Konsultasi dengan engineer lapangan.")
+    return actions.get(equipment_type, {}).get(anomaly_class,
+           "Konsultasi dengan engineer lapangan untuk evaluasi lebih lanjut.")

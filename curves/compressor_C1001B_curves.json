@@ -1,0 +1,68 @@
+{
+  "equipment_id": "C-1001B",
+  "equipment_name": "Donggi Compressor - BCL305",
+  "tag": "230-C-1001B",
+  "design": {
+    "mass_flow_kgh": 56320,
+    "suction_pressure_kgcm2": 32.02,
+    "suction_temperature_C": 45.08,
+    "molecular_weight": 18.79,
+    "cp_cv": 1.378,
+    "guaranteed_flow_mmscfd": 60.26,
+    "guaranteed_shaft_power_kW": 2289.14
+  },
+  "speed_lines_rpm": {
+    "A": 13068,
+    "B": 12446,
+    "C": 11201,
+    "D": 9957,
+    "E": 8712,
+    "average": 10827.2
+  },
+  "poly_head": {
+    "unit": "kJ/kg",
+    "flow_unit": "MMSCFD",
+    "speed_A": [-0.000004, 0.0012, -0.1494, 8.9335, -265.78, 3289.9],
+    "speed_B": [-0.000002, 0.0006, -0.0692, 3.6827, -96.807, 1135.6],
+    "speed_C": [-0.000002, 0.0004, -0.0393, 1.8581, -43.538, 508.57],
+    "speed_D": [0.0, -0.000002, 0.0012, -0.1012, 2.9854, 52.543],
+    "speed_E": [0.000004, -0.0008, 0.0496, -1.6027, 24.924, -84.818],
+    "surge_line": [-0.00003, 0.0049, -0.3786, 14.385, -265.28, 1937.1],
+    "protection_line": [-0.00001, 0.0025, -0.2133, 9.0767, -186.28, 1512.4],
+    "stonewall": [0.0, 0.0, 0.0, 0.0, 1.5909, -31.846]
+  },
+  "pressure_ratio": {
+    "unit": "dimensionless",
+    "flow_unit": "MMSCFD",
+    "speed_A": [0.0, 0.00002, -0.0025, 0.1523, -4.5503, 56.578],
+    "speed_B": [0.0, 0.00001, -0.0011, 0.0603, -1.6299, 19.836],
+    "speed_C": [0.0, 0.0, 0.00001, -0.0017, 0.0672, 1.1336],
+    "speed_D": [0.0, 0.0, 0.00002, -0.0019, 0.0615, 1.0898]
+  },
+  "shaft_power": {
+    "unit": "kW",
+    "flow_unit": "MMSCFD",
+    "speed_A": [-0.00006, 0.0174, -2.1307, 129.76, -3891.2, 47921.0],
+    "speed_B": [-0.00003, 0.0094, -1.0706, 60.068, -1634.7, 18878.0],
+    "speed_C": [-0.00002, 0.0044, -0.4536, 22.701, -532.98, 5833.0],
+    "speed_D": [0.00002, -0.0034, 0.2911, -12.383, 284.07, -1957.9],
+    "speed_E": [0.00002, -0.0038, 0.2605, -9.0638, 174.88, -940.75]
+  },
+  "operating_stats": {
+    "flow_p25": 50.21, "flow_p50": 53.43, "flow_p75": 54.69,
+    "flow_p10": 46.86, "flow_p90": 55.03,
+    "pr_mean": 1.763, "pr_std": 0.017,
+    "pr_p25": 1.755, "pr_p75": 1.773,
+    "shaft_power_mean": 1243.0, "shaft_power_p90": 1262.1,
+    "shaft_power_p99": 1278.2,
+    "poly_head_mean": 79.46, "poly_head_p25": 79.24, "poly_head_p75": 80.20,
+    "poly_eff_mean": 81.38,
+    "speed_mean_rpm": 10211, "speed_p50_rpm": 10813
+  },
+  "flow_pressure_ratio": {
+    "surge_flow": 27.09,
+    "protection_flow": 29.54,
+    "rated_flow": 55.87,
+    "rated_pressure_ratio": 1.767
+  }
+}

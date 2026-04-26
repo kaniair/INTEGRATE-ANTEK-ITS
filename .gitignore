@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# INTEGRATE project — runtime & personal files
+.claude/
+*.db
+streamlit_log.txt
+streamlit_err.txt
+recruitment.env
