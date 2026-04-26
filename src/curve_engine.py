@@ -61,52 +61,203 @@ class CompressorStatus:
 # -------------------------------------------------
 
 def load_pump_curves(curves_path: str = "curves/pump_curves.json") -> dict:
+    """
+    Load pump curves. Prioritas:
+    1. Jika file JSON ada dan sudah format baru (punya 'head_flow' + 'coeff_max_diameter') -> pakai langsung
+    2. Jika file JSON ada tapi format lama -> normalize
+    3. Jika file tidak ada -> pakai _default_pump_curves()
+    """
     if not os.path.exists(curves_path):
         return _default_pump_curves()
+
     with open(curves_path) as f:
         raw = json.load(f)
-    if "head_flow" in raw:
+
+    # Cek apakah format sudah baru (sudah punya semua 3 koefisien diameter)
+    hf = raw.get("head_flow", {})
+    has_all_coeff = (
+        "coeff_max_diameter"   in hf and
+        "coeff_rated_diameter" in hf and
+        "coeff_min_diameter"   in hf and
+        "coefficients"         in hf
+    )
+
+    if "head_flow" in raw and has_all_coeff:
+        # Format baru — langsung return tanpa normalize
         return raw
-    return _normalize_pump_curves(raw)
+    elif "head_flow" in raw:
+        # Format setengah baru — normalize tapi preserve coeff yang ada
+        return _normalize_pump_curves(raw)
+    else:
+        # Format lama — normalize
+        return _normalize_pump_curves(raw)
 
 
 def _normalize_pump_curves(raw: dict) -> dict:
-    """Normalize pump_curves.json from team's PR #3 format (uses 'head' key, absolute flows)
-    into the format expected by check_pump_performance() ('head_flow', percentage flows)."""
-    h = raw.get("head", {})
-    rated_flow = h.get("rated_flow", 371.0)
+    """
+    Normalize berbagai format pump_curves.json ke format standar.
+    Selalu preserve semua 3 koefisien diameter impeller.
+    """
+    # Support dua format key: 'head_flow' (format baru) atau 'head' (format lama)
+    hf = raw.get("head_flow", raw.get("head", {}))
+    rated_flow = hf.get("rated_flow", 600.2)
 
-    por_min_abs = h.get("por_min_flow", rated_flow * 0.6)
-    por_max_abs = h.get("por_max_flow", rated_flow * 1.1)
-    aor_min_abs = h.get("aor_min_flow", rated_flow * 0.4)
-    aor_max_abs = h.get("aor_max_flow", rated_flow * 1.2)
+    # ── Batas POR/AOR ────────────────────────────────────────────────
+    # Deteksi otomatis apakah nilai dalam % atau GPM absolut
+    por_min_raw = hf.get("por_min_flow", 420.0)
+    por_max_raw = hf.get("por_max_flow", 711.6)
+    aor_min_raw = hf.get("aor_min_flow", 115.0)
+    aor_max_raw = hf.get("aor_max_flow", 750.0)
 
-    coeff = (h.get("rated", {}).get("coefficients")
-             or h.get("coefficients")
-             or [-0.0012, -0.1, 1954.0])
+    # Jika nilai > 200 kemungkinan GPM absolut, konversi ke %
+    def to_pct(v):
+        return v if v <= 200 else v / rated_flow * 100
 
-    p = raw.get("power", {})
-    hp_val = p.get("rated_power_hp")
-    rated_power = p.get("rated_power") or (hp_val * 0.7457 if hp_val else 450.0)
+    por_min = to_pct(por_min_raw)
+    por_max = to_pct(por_max_raw)
+    aor_min = to_pct(aor_min_raw)
+    aor_max = to_pct(aor_max_raw)
+
+    # ── Koefisien kurva head ──────────────────────────────────────────
+    # Ambil dari berbagai kemungkinan key, jangan pernah default semua ke rated
+    coeff_rated = (
+        hf.get("coeff_rated_diameter") or
+        hf.get("coefficients") or
+        hf.get("rated", {}).get("coefficients") or
+        [5e-13, 1e-9, -4e-6, 0.0013, -0.2108, 2146.9]   # fallback Excel data
+    )
+    coeff_max = (
+        hf.get("coeff_max_diameter") or
+        hf.get("max_diameter", {}).get("coefficients") or
+        [4e-12, -6e-9, 3e-7, 0.0003, -0.1651, 2353.8]    # fallback Excel data
+    )
+    coeff_min = (
+        hf.get("coeff_min_diameter") or
+        hf.get("min_diameter", {}).get("coefficients") or
+        [-8e-13, 4e-9, -6e-6, 0.0016, -0.1897, 1858.3]   # fallback Excel data
+    )
+
+    # ── Power & NPSH ─────────────────────────────────────────────────
+    p    = raw.get("power", {})
+    npsh = raw.get("npsh", {})
+
+    rated_power = (
+        p.get("rated_power") or
+        p.get("rated_power_hp") or
+        500.0
+    )
+    power_coeff = (
+        p.get("coefficients") or
+        [1e-12, -2e-9, 1e-6, 0.0002, 0.1081, 292.41]     # fallback Excel data
+    )
+    npshr_coeff = (
+        npsh.get("npshr_coefficients") or
+        [-2e-13, 3e-10, -2e-7, 0.0001, -0.0032, 7.8808]  # fallback Excel data
+    )
+
+    # ── Fluid properties ─────────────────────────────────────────────
+    fluid = raw.get("fluid", {})
+    sg    = (fluid.get("specific_gravity") or
+             npsh.get("specific_gravity") or 1.084)
+    pv    = (fluid.get("vapor_pressure_psia") or
+             npsh.get("vapor_pressure_psia") or 1.02)
+    eta   = fluid.get("pump_efficiency", 0.686)
 
     return {
-        "equipment_id": raw.get("equipment_id", "P-1001A"),
+        "equipment_id": raw.get("equipment_id", "340-P-1005 A/B"),
+        "fluid": {
+            "specific_gravity"   : sg,
+            "vapor_pressure_psia": pv,
+            "pump_efficiency"    : eta,
+        },
         "head_flow": {
-            "rated_flow": rated_flow,
-            "rated_head": h.get("rated_head_ft", 1954.0),
-            "por_min_flow": por_min_abs / rated_flow * 100,
-            "por_max_flow": por_max_abs / rated_flow * 100,
-            "aor_min_flow": aor_min_abs / rated_flow * 100,
-            "aor_max_flow": aor_max_abs / rated_flow * 100,
-            "coefficients": coeff,
+            "rated_flow"          : rated_flow,
+            "rated_head"          : hf.get("rated_head", hf.get("rated_head_ft", 1795.9)),
+            "por_min_flow"        : por_min,
+            "por_max_flow"        : por_max,
+            "aor_min_flow"        : aor_min,
+            "aor_max_flow"        : aor_max,
+            # Semua 3 koefisien diameter — JANGAN pernah default semua ke rated
+            "coefficients"        : coeff_rated,   # alias untuk check_pump_performance
+            "coeff_rated_diameter": coeff_rated,
+            "coeff_max_diameter"  : coeff_max,
+            "coeff_min_diameter"  : coeff_min,
         },
         "npsh": {
-            "npsha": raw.get("npsh", {}).get("npsha", 25.0),
-            "npshr_coefficients": raw.get("npsh", {}).get("npshr_coefficients", [0.0001, 0.05, 3.0]),
+            "npsha"              : npsh.get("npsha", None),
+            "vapor_pressure_psia": pv,
+            "specific_gravity"   : sg,
+            "npshr_coefficients" : npshr_coeff,
         },
         "power": {
-            "rated_power": rated_power,
-            "coefficients": p.get("coefficients", [0.001, 0.5, 50.0]),
+            "rated_power" : rated_power,
+            "coefficients": power_coeff,
+        },
+    }
+
+
+def _normalize_pump_curves(raw: dict) -> dict:
+    """
+    Normalize pump_curves.json ke format yang dipakai check_pump_performance().
+    Mempertahankan semua koefisien 3 diameter impeller.
+    """
+    h = raw.get("head_flow", raw.get("head", {}))
+    rated_flow = h.get("rated_flow", 600.2)
+
+    # Batas POR/AOR — sudah dalam % jika dari _default_pump_curves()
+    # atau dalam GPM absolut jika dari format lama, deteksi otomatis
+    por_min_raw = h.get("por_min_flow", 420.0)
+    por_max_raw = h.get("por_max_flow", 711.6)
+    aor_min_raw = h.get("aor_min_flow", 115.0)
+    aor_max_raw = h.get("aor_max_flow", 750.0)
+
+    # Jika nilai > 200, kemungkinan GPM absolut bukan persen → konversi
+    por_min = por_min_raw if por_min_raw <= 200 else por_min_raw / rated_flow * 100
+    por_max = por_max_raw if por_max_raw <= 200 else por_max_raw / rated_flow * 100
+    aor_min = aor_min_raw if aor_min_raw <= 200 else aor_min_raw / rated_flow * 100
+    aor_max = aor_max_raw if aor_max_raw <= 200 else aor_max_raw / rated_flow * 100
+
+    # Koefisien — ambil semua diameter jika ada
+    coeff_rated = (h.get("coefficients") or
+                   h.get("coeff_rated_diameter") or
+                   [-0.0012, -0.1, 1954.0])
+    coeff_max   = h.get("coeff_max_diameter",   coeff_rated)
+    coeff_min   = h.get("coeff_min_diameter",   coeff_rated)
+
+    p = raw.get("power", {})
+    rated_power = p.get("rated_power", 500.0)
+
+    npsh = raw.get("npsh", {})
+
+    return {
+        "equipment_id": raw.get("equipment_id", "340-P-1005 A/B"),
+        "fluid": raw.get("fluid", {
+            "specific_gravity"   : 1.084,
+            "vapor_pressure_psia": 1.02,
+            "pump_efficiency"    : 0.686,
+        }),
+        "head_flow": {
+            "rated_flow"          : rated_flow,
+            "rated_head"          : h.get("rated_head", 1795.9),
+            "por_min_flow"        : por_min,
+            "por_max_flow"        : por_max,
+            "aor_min_flow"        : aor_min,
+            "aor_max_flow"        : aor_max,
+            "coefficients"        : coeff_rated,
+            "coeff_rated_diameter": coeff_rated,
+            "coeff_max_diameter"  : coeff_max,
+            "coeff_min_diameter"  : coeff_min,
+        },
+        "npsh": {
+            "npsha"              : npsh.get("npsha", None),
+            "vapor_pressure_psia": npsh.get("vapor_pressure_psia", 1.02),
+            "specific_gravity"   : npsh.get("specific_gravity", 1.084),
+            "npshr_coefficients" : npsh.get("npshr_coefficients",
+                                            [-2e-13, 3e-10, -2e-7, 0.0001, -0.0032, 7.8808]),
+        },
+        "power": {
+            "rated_power" : rated_power,
+            "coefficients": p.get("coefficients", [1e-12, -2e-9, 1e-6, 0.0002, 0.1081, 292.41]),
         },
     }
 
@@ -127,25 +278,103 @@ def _load_fitted_curves(fitted_path: str = "curves/compressor_C1001B_fitted.json
 
 
 def _default_pump_curves() -> dict:
+    """
+    Pump Performance Curves — 340-P-1005 A/B (DMF)
+    Sumber : Pump_Performance_mtd.xlsx (PT Pertamina EP Cepu)
+    Fluid  : SULFINOL-X (Water, MDEA, Piperazine, Sulfolane)
+    Tag DCS: Flow  = Root.U340.F.340FIC1003A.PV  (BPD)
+             Ps    = Root.U340.P.340PI1135.PV     (psig)
+             Pd    = 340-P-1005 A/B (Local)       (psig)
+
+    ─────────────────────────────────────────────────────────────
+    KONVERSI UNIT (dari DCS ke unit kurva):
+      Flow (GPM)  = Flow_BPD × 42 / 1440
+      Head (ft)   = (Pd_psig − Ps_psig) / (0.4335 × SG)
+      BHP  (hp)   = Flow_GPM × (Pd_psig − Ps_psig) / (1715 × η)
+      Ps   (psia) = Ps_psig + 14.7
+      NPSHa (ft)  = (Ps_psia − Pv_psia) / (0.4335 × SG)
+    ─────────────────────────────────────────────────────────────
+
+    PERSAMAAN POLYNOMIAL — np.polyval(coeff, flow_gpm):
+      Format koefisien: [x^5, x^4, x^3, x^2, x^1, x^0]
+
+      HEAD vs FLOW (Head ft, Flow GPM):
+        Max Diameter  (10.79"):
+          y =  4E-12x5 − 6E-9x4 + 3E-7x3 + 0.0003x2 − 0.1651x + 2353.8
+        Rated Diameter(10.35"):  ← default untuk cek operasi
+          y =  5E-13x5 + 1E-9x4 − 4E-6x3 + 0.0013x2 − 0.2108x + 2146.9
+        Min Diameter  (9.65"):
+          y = −8E-13x5 + 4E-9x4 − 6E-6x3 + 0.0016x2 − 0.1897x + 1858.3
+
+      POWER vs FLOW (BHP hp, Flow GPM):
+        y = 1E-12x5 − 2E-9x4 + 1E-6x3 + 0.0002x2 + 0.1081x + 292.41
+
+      NPSHr vs FLOW (ft, Flow GPM):
+        y = −2E-13x5 + 3E-10x4 − 2E-7x3 + 0.0001x2 − 0.0032x + 7.8808
+
+    BATAS OPERATING REGION (GPM absolut dari Pump Raw Data):
+      BEP            : 600.2 GPM
+      Lower POR      : 420   GPM  (70% BEP)
+      Upper POR      : 711.6 GPM (118.6% BEP)
+      Min AOR        : 115   GPM  (19.2% BEP)
+      Max AOR        : 750   GPM  (125% BEP, estimasi)
+    ─────────────────────────────────────────────────────────────
+    """
+    rated_flow = 600.2   # GPM — BEP (Best Efficiency Point)
+
     return {
-        "equipment_id": "P-1001A",
+        "equipment_id": "340-P-1005 A/B",
+
+        # ── Fluid Properties ──────────────────────────────────────────
+        "fluid": {
+            "name"            : "SULFINOL-X",
+            "specific_gravity": 1.084,
+            "density_kg_m3"   : 1084,
+            "viscosity_cp"    : 10.9,
+            "vapor_pressure_psia": 1.02,
+            "pump_efficiency" : 0.686,   # η — dipakai hitung BHP dari DCS
+        },
+
+        # ── Head vs Flow ───────────────────────────────────────────────
+        # Batas POR/AOR dalam format PERSEN agar kompatibel dengan
+        # check_pump_performance() yang memakai: val/100 * rated_flow
         "head_flow": {
-            "por_min_flow": 60.0,
-            "por_max_flow": 110.0,
-            "aor_min_flow": 40.0,
-            "aor_max_flow": 120.0,
-            "rated_flow": 371.0,
-            "rated_head": 1954.0,
-            "coefficients": [-0.0012, -0.1, 1954.0]
+            "rated_flow"   : rated_flow,   # GPM — BEP
+            "rated_head"   : 1795.9,       # ft  — head di BEP
+
+            # Batas dalam % — hasil konversi dari GPM absolut
+            "por_min_flow" : 420.0 / rated_flow * 100,   # 69.98% → 420 GPM
+            "por_max_flow" : 711.6 / rated_flow * 100,   # 118.56% → 711.6 GPM
+            "aor_min_flow" : 115.0 / rated_flow * 100,   # 19.16% → 115 GPM
+            "aor_max_flow" : 750.0 / rated_flow * 100,   # 124.96% → 750 GPM
+
+            # Koefisien [x^5, x^4, x^3, x^2, x^1, x^0]
+            "coeff_max_diameter"  : [ 4e-12, -6e-9,  3e-7,  0.0003, -0.1651, 2353.8],
+            "coeff_rated_diameter": [ 5e-13,  1e-9, -4e-6,  0.0013, -0.2108, 2146.9],
+            "coeff_min_diameter"  : [-8e-13,  4e-9, -6e-6,  0.0016, -0.1897, 1858.3],
+
+            # "coefficients" = rated diameter — dipakai check_pump_performance()
+            "coefficients"        : [ 5e-13,  1e-9, -4e-6,  0.0013, -0.2108, 2146.9],
         },
+
+        # ── NPSH ─────────────────────────────────────────────────────
+        # NPSHa = (Ps_psia − Pv_psia) / (0.4335 × SG)
+        # Ps_psia = Ps_psig + 14.7
         "npsh": {
-            "npsha": 25.0,
-            "npshr_coefficients": [0.0001, 0.05, 3.0]
+            "npsha"              : None,    # dihitung dinamis dari DCS, di-set di app.py
+            "vapor_pressure_psia": 1.02,
+            "specific_gravity"   : 1.084,
+            # NPSHr polynomial [x^5, x^4, x^3, x^2, x^1, x^0]
+            "npshr_coefficients" : [-2e-13, 3e-10, -2e-7, 0.0001, -0.0032, 7.8808],
         },
+
+        # ── Power vs Flow ─────────────────────────────────────────────
+        # BHP (hp) = Flow_GPM × (Pd − Ps) / (1715 × η)
         "power": {
-            "rated_power": 450.0,
-            "coefficients": [0.001, 0.5, 50.0]
-        }
+            "rated_power" : 500.0,   # hp — rated motor power
+            # Koefisien [x^5, x^4, x^3, x^2, x^1, x^0]
+            "coefficients": [1e-12, -2e-9, 1e-6, 0.0002, 0.1081, 292.41],
+        },
     }
 
 
@@ -204,51 +433,178 @@ def _default_compressor_curves() -> dict:
 # -------------------------------------------------
 
 def check_pump_performance(equipment_id, flow, head, power, npsha, curves) -> PumpStatus:
+    """
+    Evaluasi titik operasi pompa terhadap kurva pabrikan.
+    Rules persis dari Pump_Performance_mtd.xlsx — sheet Summary.
+
+    RULES HEAD vs FLOW:
+      Qactual > Q_max_diameter        → High Flow / Pump Overload
+      Qactual < Q_min_diameter        → Low Flow / Risk of Recirculation
+      Q_lower_POR ≤ Qactual ≤ Q_upper_POR → POR (Best Efficiency)
+      Q_min_AOR ≤ Qactual < Q_lower_POR   → AOR Low Flow
+      Qactual < Q_min_AOR             → Overheating, seal damage, recirculation
+      Qactual > Q_max_AOR             → Motor overload, impeller damage, cavitation
+
+    RULES POWER vs FLOW:
+      P_actual > 110% P_curve         → Overload
+      P_actual < 90% P_curve          → Possible Flow Measurement Error
+
+    RULES NPSHa vs NPSHr:
+      NPSHa > NPSHr                   → Pump aman
+      NPSHa > 1.3 × NPSHr            → Risiko kavitasi (berisiko)
+      NPSHa ≤ NPSHr                   → Kavitasi terjadi
+
+    Parameters
+    ----------
+    flow   : float  Flow aktual dalam GPM
+                    Konversi dari BPD: flow_gpm = flow_bpd * 42 / 1440
+    head   : float  Differential head dalam ft
+                    Dari DCS: (Pd_psig - Ps_psig) / (0.4335 * SG)
+    power  : float  Brake Horsepower dalam hp
+                    Dari DCS: (flow_gpm * (Pd_psig - Ps_psig)) / (1715 * efficiency)
+    npsha  : float  NPSH available dalam ft
+                    Dari DCS: (Ps_psia - Pv_psia) / (0.4335 * SG)
+                    dengan Ps_psia = Ps_psig + 14.7
+    """
     alerts = []
-    hf = curves["head_flow"]
-    rated_flow = hf["rated_flow"]
-    por_min = hf["por_min_flow"] / 100 * rated_flow
-    por_max = hf["por_max_flow"] / 100 * rated_flow
-    aor_min = hf["aor_min_flow"] / 100 * rated_flow
-    aor_max = hf["aor_max_flow"] / 100 * rated_flow
+    hf         = curves["head_flow"]
+    rated_flow = hf["rated_flow"]   # 600.2 GPM (BEP)
+    sg         = curves["npsh"].get("specific_gravity", 1.084)
 
-    coeff = hf["coefficients"]
-    expected_head = np.polyval(coeff, flow)
+    # ── Batas operating region (GPM absolut) ─────────────────────────
+    por_min = hf["por_min_flow"] / 100 * rated_flow   # 420.0 GPM
+    por_max = hf["por_max_flow"] / 100 * rated_flow   # 711.6 GPM
+    aor_min = hf["aor_min_flow"] / 100 * rated_flow   # 115.0 GPM
+    aor_max = hf["aor_max_flow"] / 100 * rated_flow   # 750.0 GPM
 
-    npsh_coeff = curves["npsh"]["npshr_coefficients"]
-    npshr = np.polyval(npsh_coeff, flow)
+    # ── Head pada tiap kurva diameter di flow aktual ──────────────────
+    coeff_rated = hf["coefficients"]   # Rated diameter — referensi utama
+    coeff_max   = hf.get("coeff_max_diameter",   coeff_rated)
+    coeff_min   = hf.get("coeff_min_diameter",   coeff_rated)
 
+    head_rated_curve = np.polyval(coeff_rated, flow)
+    head_max_curve   = np.polyval(coeff_max,   flow)
+    head_min_curve   = np.polyval(coeff_min,   flow)
+
+    # Q_max_diameter dan Q_min_diameter: flow di mana head curve = 0
+    # Approx: pakai aor_max dan aor_min sebagai proxy (sesuai Excel rules)
+    q_max_diameter = aor_max   # 750 GPM — batas envelope max
+    q_min_diameter = aor_min   # 115 GPM — batas envelope min
+
+    # ── NPSHr dari kurva polynomial ───────────────────────────────────
+    npshr = np.polyval(curves["npsh"]["npshr_coefficients"], flow)
+    npshr = max(npshr, 0.0)
+
+    # Tangani npsha=None (belum ada data DCS)
+    if npsha is None:
+        npsha = 9999.0
+
+    # ── Power dari kurva ──────────────────────────────────────────────
+    rated_power    = curves["power"]["rated_power"]
+    expected_power = np.polyval(curves["power"]["coefficients"], flow)
+    expected_power = max(expected_power, 1.0)
+
+    # ════════════════════════════════════════════════════════════════
+    # ZONE CLASSIFICATION — sesuai urutan prioritas rules Excel
+    # ════════════════════════════════════════════════════════════════
+
+    # ── 1. NPSH CHECK (prioritas tertinggi) ──────────────────────────
     if npsha <= npshr:
+        # NPSHa ≤ NPSHr → Kavitasi terjadi
         zone = PumpZone.CAVITATION_RISK
-        alerts.append(f"KRITIS: NPSHa ({npsha:.1f}) <= NPSHr ({npshr:.1f}) -- Kavitasi aktif!")
+        alerts.append(
+            f"⛔ KRITIS: NPSHa ({npsha:.1f} ft) ≤ NPSHr ({npshr:.1f} ft) "
+            f"— Terjadi Kavitasi pada pump!"
+        )
+
     elif npsha <= 1.3 * npshr:
+        # NPSHa > NPSHr tapi < 1.3×NPSHr → berisiko kavitasi
         zone = PumpZone.AOR
-        alerts.append(f"PERINGATAN: NPSHa ({npsha:.1f}) mendekati NPSHr -- Risiko kavitasi")
-    elif flow < aor_min:
+        alerts.append(
+            f"⚠️ PERINGATAN: NPSHa ({npsha:.1f} ft) < 1.3×NPSHr ({1.3*npshr:.1f} ft) "
+            f"— Pump berisiko terjadi kavitasi"
+        )
+
+    # ── 2. FLOW vs ENVELOPE KURVA ────────────────────────────────────
+    elif flow > q_max_diameter:
+        # Qactual > Q_max_diameter → High Flow / Pump Overload
+        zone = PumpZone.OVERLOAD
+        alerts.append(
+            f"⛔ KRITIS: Flow ({flow:.1f} GPM) > Q_max_diameter ({q_max_diameter:.1f} GPM) "
+            f"— High Flow / Pump Overload"
+        )
+
+    elif flow < q_min_diameter:
+        # Qactual < Q_min_diameter → Low Flow / Risk of Recirculation
         zone = PumpZone.MINIMUM_FLOW
-        alerts.append(f"KRITIS: Flow ({flow:.1f}) di bawah minimum flow AOR ({aor_min:.1f})")
-    elif flow > aor_max:
-        zone = PumpZone.AOR
-        alerts.append(f"PERINGATAN: Flow ({flow:.1f}) melebihi AOR maksimum ({aor_max:.1f})")
+        alerts.append(
+            f"⛔ KRITIS: Flow ({flow:.1f} GPM) < Q_min_diameter ({q_min_diameter:.1f} GPM) "
+            f"— Low Flow / Risk of Recirculation, overheating, seal damage"
+        )
+
+    # ── 3. POR CHECK ─────────────────────────────────────────────────
     elif por_min <= flow <= por_max:
+        # Qactual ≥ Q_lower_POR DAN Qactual ≤ Q_upper_POR → POR
         zone = PumpZone.POR
+
+    # ── 4. AOR LOW CHECK ─────────────────────────────────────────────
+    elif aor_min <= flow < por_min:
+        # Q_min_AOR ≤ Qactual < Q_lower_POR → AOR Low Flow
+        zone = PumpZone.AOR
+        alerts.append(
+            f"⚠️ PERINGATAN: Flow ({flow:.1f} GPM) di bawah POR ({por_min:.0f} GPM) "
+            f"— Allowable Operating Region - Low Flow"
+        )
+
+    elif por_max < flow <= aor_max:
+        # Q_upper_POR < Qactual ≤ Q_max_AOR → AOR High Flow
+        zone = PumpZone.AOR
+        alerts.append(
+            f"⚠️ PERINGATAN: Flow ({flow:.1f} GPM) di atas POR ({por_max:.0f} GPM) "
+            f"— Allowable Operating Region - High Flow"
+        )
+
     else:
         zone = PumpZone.AOR
-        alerts.append(f"PERINGATAN: Pompa beroperasi di AOR (flow={flow:.1f})")
+        alerts.append(f"⚠️ PERINGATAN: Flow ({flow:.1f} GPM) di luar POR — cek kondisi operasi")
 
-    rated_power = curves["power"]["rated_power"]
-    if power > 1.2 * rated_power:
+    # ── 5. POWER CHECK ────────────────────────────────────────────────
+    # P_actual > 110% P_curve → Overload (override zone)
+    if power > 1.10 * expected_power:
         zone = PumpZone.OVERLOAD
-        alerts.append(f"KRITIS: Daya motor ({power:.1f} kW) melebihi 120% rated power ({rated_power:.1f} kW)")
+        alerts.append(
+            f"⛔ KRITIS: BHP aktual ({power:.1f} hp) > 110% kurva "
+            f"({expected_power:.1f} hp) — Overload"
+        )
+    # P_actual < 90% P_curve → Possible Flow Measurement Error
+    elif power < 0.90 * expected_power:
+        alerts.append(
+            f"⚠️ INFO: BHP aktual ({power:.1f} hp) < 90% kurva "
+            f"({expected_power:.1f} hp) — Possible Flow Measurement Error"
+        )
 
-    efficiency = (flow * head * 9.81 * 1000) / (power * 3600 * 1000) * 100 if power > 0 else 0
+    # ── 6. EFISIENSI POMPA ────────────────────────────────────────────
+    # Formula imperial: η = (Q × H × SG) / (3960 × BHP) × 100%
+    efficiency = (flow * head * sg) / (3960.0 * power) * 100 if power > 0 else 0.0
 
+    # ── 7. STATUS NORMAL ─────────────────────────────────────────────
     if not alerts:
-        alerts.append("Normal: Pompa beroperasi dalam zona POR")
+        alerts.append(
+            f"✅ Normal: Pump aman — NPSHa ({npsha:.1f} ft) > NPSHr ({npshr:.1f} ft), "
+            f"beroperasi dalam zona POR "
+            f"(flow={flow:.1f} GPM, head={head:.0f} ft, η={efficiency:.1f}%)"
+        )
 
-    return PumpStatus(equipment_id=equipment_id, flow=flow, head=head,
-                      power=power, npsha=npsha, zone=zone,
-                      efficiency=efficiency, alert_messages=alerts)
+    return PumpStatus(
+        equipment_id  = equipment_id,
+        flow          = flow,
+        head          = head,
+        power         = power,
+        npsha         = npsha,
+        zone          = zone,
+        efficiency    = round(efficiency, 2),
+        alert_messages= alerts,
+    )
 
 
 # -------------------------------------------------
