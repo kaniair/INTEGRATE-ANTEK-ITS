@@ -430,11 +430,12 @@ else:
 # TABS
 # ──────────────────────────────────────────────
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 Dashboard Real-Time",
     "📈 Kurva Performa",
     "🤖 Anomali ML",
-    "📋 Log & Riwayat"
+    "📋 Log & Riwayat",
+    "🏭 Implementasi"
 ])
 
 # ════════════════════════════════════════════════
@@ -1348,4 +1349,515 @@ with tab4:
             )
         else:
             st.info("Tidak ada anomali untuk diekspor.")
+
+
+# ════════════════════════════════════════════════
+# TAB 5 — HARDWARE ARCHITECTURE & FIELD IMPLEMENTATION
+# ════════════════════════════════════════════════
+
+with tab5:
+    st.subheader("🏭 Arsitektur Hardware & Simulasi Implementasi Lapangan")
+    st.markdown(
+        "Panduan deployment **INTEGRATE** dari lingkungan development (laptop) ke sistem lapangan "
+        "industri migas yang terintegrasi dengan DCS, sensor real-time, dan jaringan industrial."
+    )
+
+    # ── SECTION 1: Architecture Diagram 5 Layer ──────────────────────
+    st.markdown("---")
+    st.markdown("### 📐 Arsitektur Sistem 5 Layer")
+    st.caption("Dari sensor fisik di lapangan hingga dashboard operator & monitoring jarak jauh")
+
+    _fig_arch = go.Figure()
+    _fig_arch.update_layout(
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[0, 10]),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[0, 14]),
+        height=600, margin=dict(l=10, r=10, t=50, b=10),
+        paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
+    )
+
+    _arch_layers = [
+        dict(y0=0.2, y1=1.6, fill="#0d2b1a", line_c="#27ae60",
+             title="LAYER 1 — ROTATING EQUIPMENT (Physical Asset)",
+             sub="Compressor C-1001B BCL305 | Pump P-1001A | Anti-Surge Valve | Piping"),
+        dict(y0=2.2, y1=3.6, fill="#0d1b2e", line_c="#2980b9",
+             title="LAYER 2 — FIELD INSTRUMENTS & SENSORS",
+             sub="Pressure Transmitter | Coriolis Flow Meter | RTD Temperature | Vibration Probe | Speed Sensor"),
+        dict(y0=4.2, y1=5.6, fill="#1e0d2e", line_c="#8e44ad",
+             title="LAYER 3 — DCS / HISTORIAN (Exaquantum)",
+             sub="Yokogawa CS3000 DCS | Exaquantum R3.80 Historian | OPC-UA Server"),
+        dict(y0=6.2, y1=7.6, fill="#0d2e0d", line_c="#16a085",
+             title="LAYER 4 — INTEGRATE EDGE SERVER (Control Room)",
+             sub="Industrial PC 24/7 | Python 3.11 | Streamlit | BiLSTM ML Engine | Rule Engine | SQLite | Email Alert"),
+        dict(y0=8.2, y1=9.6, fill="#2e0d0d", line_c="#c0392b",
+             title="LAYER 5 — CONTROL ROOM & REMOTE MONITORING",
+             sub="Operator Workstation | Head Office VPN Tunnel | SMS / Email Notifikasi Engineer"),
+    ]
+
+    for _ly in _arch_layers:
+        _ym = (_ly["y0"] + _ly["y1"]) / 2
+        _fig_arch.add_shape(type="rect", x0=0.3, y0=_ly["y0"], x1=9.7, y1=_ly["y1"],
+                            fillcolor=_ly["fill"], line=dict(color=_ly["line_c"], width=2))
+        _fig_arch.add_annotation(x=5, y=_ym + 0.30,
+                                 text=f"<b style='font-size:13px'>{_ly['title']}</b>",
+                                 font=dict(color="white", size=12), showarrow=False)
+        _fig_arch.add_annotation(x=5, y=_ym - 0.25, text=_ly["sub"],
+                                 font=dict(color="#aaaaaa", size=10), showarrow=False)
+
+    _conn_arrows = [
+        (1.6, 2.2, "4-20mA / HART / PROFIBUS"),
+        (3.6, 4.2, "OPC-DA / Modbus TCP"),
+        (5.6, 6.2, "OPC-UA Client / Direct SQL Query"),
+        (7.6, 8.2, "HTTP (LAN) / VPN Tunnel"),
+    ]
+    for _ya, _yb, _lbl in _conn_arrows:
+        _ym = (_ya + _yb) / 2
+        _fig_arch.add_annotation(x=5, y=_yb, ax=5, ay=_ya, axref="x", ayref="y",
+                                 arrowhead=3, arrowsize=1.2, arrowwidth=2,
+                                 arrowcolor="#f39c12", showarrow=True, text="")
+        _fig_arch.add_annotation(x=7.5, y=_ym, text=f"<i>{_lbl}</i>",
+                                 font=dict(color="#f39c12", size=9), showarrow=False,
+                                 bgcolor="#1a1408", bordercolor="#f39c12",
+                                 borderwidth=1, borderpad=3)
+
+    _fig_arch.add_annotation(x=5, y=13.2,
+                             text="<b>INTEGRATE — Field Deployment Architecture (API 617 / API 610)</b>",
+                             font=dict(color="#00b4d8", size=15), showarrow=False)
+    st.plotly_chart(_fig_arch, use_container_width=True)
+
+    # ── SECTION 2: Hardware & Software Specs ─────────────────────────
+    st.markdown("---")
+    st.markdown("### 🔧 Bill of Materials — Hardware & Software")
+
+    _col_hw1, _col_hw2 = st.columns(2)
+
+    with _col_hw1:
+        st.markdown("**Hardware Utama**")
+        st.dataframe(pd.DataFrame({
+            "Komponen": [
+                "Edge Server (Industrial PC)",
+                "Managed Industrial Switch",
+                "Industrial Firewall",
+                "UPS Backup Power",
+                "Operator Workstation",
+                "OPC-UA Gateway",
+                "Serial-to-Ethernet Converter",
+            ],
+            "Model / Spesifikasi": [
+                "ADVANTECH MIC-7700 | i7 | 32GB RAM | 1TB SSD",
+                "Cisco IE-2000-16TC | 24-port | DIN-rail",
+                "Hirschmann EAGLE One | Industrial-grade",
+                "APC Smart-UPS 1500VA | 230V | 30 min backup",
+                "Dell OptiPlex 7090 | i5 | 16GB | 27 inci",
+                "Kepware KEPServerEX v6.15",
+                "Moxa NPort 5150 | RS-232/485 ke Ethernet",
+            ],
+            "Qty": [1, 1, 1, 2, 2, 1, 2],
+            "Fungsi Utama": [
+                "Jalankan INTEGRATE (ML + Dashboard) 24/7",
+                "Jaringan industrial LAN terisolasi",
+                "Segmentasi & keamanan jaringan OT/IT",
+                "Power backup server + switch jika PLN mati",
+                "Akses dashboard oleh operator",
+                "Bridge OPC-UA ke DCS Yokogawa",
+                "Koneksi instrument legacy Modbus RTU",
+            ]
+        }), use_container_width=True, hide_index=True)
+
+    with _col_hw2:
+        st.markdown("**Software Stack (Semua Open Source / Free)**")
+        st.dataframe(pd.DataFrame({
+            "Software": [
+                "Ubuntu Server 22.04 LTS",
+                "Python 3.11.x",
+                "Streamlit 1.35.0",
+                "TensorFlow 2.15.0",
+                "opcua-asyncio",
+                "SQLite + SQLAlchemy",
+                "Nginx (reverse proxy)",
+                "Supervisor",
+            ],
+            "Fungsi": [
+                "OS stabil & aman untuk server industri",
+                "Runtime seluruh sistem INTEGRATE",
+                "Web dashboard engine (no browser plugin)",
+                "BiLSTM Autoencoder inference",
+                "Koneksi real-time ke OPC-UA Server DCS",
+                "Penyimpanan log anomali lokal",
+                "HTTPS + akses multi-user LAN",
+                "Auto-restart INTEGRATE jika crash",
+            ],
+            "Lisensi": [
+                "Free (Open Source)", "Free", "Apache 2.0", "Apache 2.0",
+                "MIT", "MIT/BSD", "BSD", "MIT"
+            ]
+        }), use_container_width=True, hide_index=True)
+
+    st.markdown("**Perbandingan: Development (Laptop) vs Production (Field Server)**")
+    st.dataframe(pd.DataFrame({
+        "Aspek": [
+            "Hardware", "OS", "Sumber Data", "Protokol", "Reliabilitas",
+            "Keamanan Jaringan", "Kapasitas Historis", "Akses Multi-User", "Pemulihan Otomatis"
+        ],
+        "Laptop (Development Sekarang)": [
+            "Consumer laptop", "Windows 10/11",
+            "File Excel / CSV manual upload",
+            "File system lokal",
+            "Hanya aktif saat user membuka",
+            "Tidak ada segmentasi jaringan",
+            "Terbatas kapasitas RAM/disk",
+            "Tidak (local only)",
+            "Restart manual oleh user"
+        ],
+        "Industrial PC (Production Lapangan)": [
+            "ADVANTECH MIC-7700 rated 24/7",
+            "Ubuntu Server 22.04 LTS",
+            "OPC-UA polling otomatis dari Exaquantum",
+            "OPC-UA / Modbus TCP / Direct SQL",
+            "99.9% uptime, auto-restart via Supervisor",
+            "Firewall industrial + VLAN OT terisolasi",
+            "1TB SSD lokal + archive NAS opsional",
+            "Ya (LAN) + VPN remote head office",
+            "Supervisor watchdog + UPS power backup"
+        ]
+    }), use_container_width=True, hide_index=True)
+
+    # ── SECTION 3: OPC-UA Tag Mapping ────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 🔗 Pemetaan Tag OPC-UA — Exaquantum ke INTEGRATE")
+    st.caption("Tag NodeId yang harus dikonfigurasi di KEPServerEX untuk masing-masing equipment")
+
+    st.dataframe(pd.DataFrame({
+        "Tag Exaquantum (OPC-UA NodeId)": [
+            "ns=2;s=C1001B.InletFlow.PV",
+            "ns=2;s=C1001B.SuctionPressure.PV",
+            "ns=2;s=C1001B.DischargePressure.PV",
+            "ns=2;s=C1001B.SuctionTemp.PV",
+            "ns=2;s=C1001B.DischargeTemp.PV",
+            "ns=2;s=C1001B.ShaftPower.PV",
+            "ns=2;s=C1001B.Speed.PV",
+            "ns=2;s=C1001B.PressureRatio.PV",
+            "ns=2;s=P1001A.FlowRate.PV",
+            "ns=2;s=P1001A.SuctionPressure.PV",
+            "ns=2;s=P1001A.DischargePressure.PV",
+            "ns=2;s=P1001A.Temperature.PV",
+            "ns=2;s=P1001A.MotorCurrent.PV",
+        ],
+        "Kolom INTEGRATE": [
+            "inlet_flow", "suction_pressure", "discharge_pressure",
+            "T_suction_F", "T_discharge_F", "shaft_power",
+            "speed_rpm", "pressure_ratio",
+            "flow_rate", "suction_pressure", "discharge_pressure",
+            "temperature", "motor_current",
+        ],
+        "Satuan": [
+            "MMSCFD", "kg/cm2", "kg/cm2", "degF", "degF",
+            "kW", "RPM", "-",
+            "GPM", "psig", "psig", "degF", "A"
+        ],
+        "Interval Poll": [
+            "1 min", "1 min", "1 min", "5 min", "5 min",
+            "1 min", "1 min", "1 min",
+            "5 min", "5 min", "5 min", "5 min", "5 min"
+        ],
+        "Equipment": [
+            "C-1001B", "C-1001B", "C-1001B", "C-1001B", "C-1001B",
+            "C-1001B", "C-1001B", "C-1001B",
+            "P-1001A", "P-1001A", "P-1001A", "P-1001A", "P-1001A"
+        ],
+        "Alert Threshold": [
+            "< 27.09 MMSCFD = SURGE",
+            "< 33 atau > 45 kg/cm2",
+            "< 55 atau > 70 kg/cm2",
+            "> 115 degF",
+            "> 220 degF",
+            "> 1408 kW (110% rated)",
+            "< 8500 atau > 13500 RPM",
+            "< 1.2 atau > 2.0",
+            "< 115 GPM (AOR min)",
+            "< 30 psig",
+            "> 1200 psig",
+            "> 130 degF",
+            "> 200 A"
+        ]
+    }), use_container_width=True, hide_index=True)
+
+    # ── SECTION 4: Surge Event Simulation ────────────────────────────
+    st.markdown("---")
+    st.markdown("### 🔄 Simulasi Skenario Lapangan — Kejadian Surge Kompresor C-1001B")
+    st.caption(
+        "Simulasi interaktif bagaimana INTEGRATE mendeteksi dan merespons kejadian surge "
+        "secara real-time: dari sensor -> DCS -> OPC-UA -> ML Engine -> Alert operator"
+    )
+
+    np.random.seed(99)
+    _n_sim = 60
+    _t_surge_start = 42
+    _t_sim = pd.date_range("2025-08-27 08:00", periods=_n_sim, freq="1min")
+    _idx = np.arange(_n_sim)
+
+    _flow_sim = np.where(
+        _idx < _t_surge_start,
+        53.4 + np.random.normal(0, 0.8, _n_sim),
+        53.4 - np.linspace(0, 32, _n_sim) + np.random.normal(0, 0.4, _n_sim)
+    )
+    _flow_sim = np.clip(_flow_sim, 18, 60)
+
+    _hp_sim = np.where(
+        _idx < _t_surge_start,
+        79.5 + np.random.normal(0, 0.5, _n_sim),
+        79.5 + np.linspace(0, 18, _n_sim) + np.random.normal(0, 0.4, _n_sim)
+    )
+    _hp_sim = np.clip(_hp_sim, 60, 102)
+
+    _sp_sim = np.where(
+        _idx < _t_surge_start,
+        1243 + np.random.normal(0, 15, _n_sim),
+        1243 + np.linspace(0, 320, _n_sim) + np.random.normal(0, 12, _n_sim)
+    )
+    _sp_sim = np.clip(_sp_sim, 800, 1600)
+
+    _pr_sim = np.where(
+        _idx < _t_surge_start,
+        1.767 + np.random.normal(0, 0.01, _n_sim),
+        1.767 + np.linspace(0, 0.12, _n_sim) + np.random.normal(0, 0.008, _n_sim)
+    )
+
+    _sim_c1, _sim_c2 = st.columns(2)
+
+    def _dark_fig(title, ylab, height=300):
+        _f = go.Figure()
+        _f.update_layout(
+            title=title, height=height,
+            paper_bgcolor="#0e1117", plot_bgcolor="#1a1f2e",
+            font=dict(color="white"), margin=dict(l=10, r=10, t=40, b=10),
+            xaxis=dict(gridcolor="#2a2f3e"),
+            yaxis=dict(gridcolor="#2a2f3e", title=ylab),
+            legend=dict(bgcolor="#1a1f2e", bordercolor="#444")
+        )
+        return _f
+
+    with _sim_c1:
+        _f1 = _dark_fig("Inlet Flow — Surge Event Simulation", "MMSCFD")
+        _f1.add_trace(go.Scatter(x=_t_sim, y=_flow_sim, name="Inlet Flow",
+                                 line=dict(color="#3498db", width=2)))
+        _f1.add_hline(y=27.09, line=dict(color="#e74c3c", width=2, dash="dash"),
+                      annotation_text="Surge Line 27.09", annotation_font_color="#e74c3c",
+                      annotation_position="top left")
+        _f1.add_hline(y=29.54, line=dict(color="#f39c12", width=1.5, dash="dot"),
+                      annotation_text="Protection 29.54", annotation_font_color="#f39c12",
+                      annotation_position="bottom right")
+        _f1.add_vrect(x0=str(_t_sim[_t_surge_start]), x1=str(_t_sim[-1]),
+                      fillcolor="#e74c3c", opacity=0.12, line_width=0,
+                      annotation_text="SURGE!", annotation_font_color="#e74c3c",
+                      annotation_position="top left")
+        st.plotly_chart(_f1, use_container_width=True)
+
+        _f3 = _dark_fig("Shaft Power — Overload saat Surge", "kW")
+        _f3.add_trace(go.Scatter(x=_t_sim, y=_sp_sim, name="Shaft Power",
+                                 line=dict(color="#9b59b6", width=2)))
+        _f3.add_hline(y=1280, line=dict(color="#f39c12", width=1.5, dash="dash"),
+                      annotation_text="Rated 1280 kW", annotation_font_color="#f39c12")
+        _f3.add_hline(y=1408, line=dict(color="#e74c3c", width=2, dash="dash"),
+                      annotation_text="KRITIS 110%", annotation_font_color="#e74c3c")
+        _f3.add_vrect(x0=str(_t_sim[_t_surge_start]), x1=str(_t_sim[-1]),
+                      fillcolor="#e74c3c", opacity=0.12, line_width=0)
+        st.plotly_chart(_f3, use_container_width=True)
+
+    with _sim_c2:
+        _f2 = _dark_fig("Polytropic Head — Naik saat Surge", "kJ/kg")
+        _f2.add_trace(go.Scatter(x=_t_sim, y=_hp_sim, name="Poly Head",
+                                 line=dict(color="#2ecc71", width=2)))
+        _f2.add_vrect(x0=str(_t_sim[_t_surge_start]), x1=str(_t_sim[-1]),
+                      fillcolor="#e74c3c", opacity=0.12, line_width=0,
+                      annotation_text="SURGE!", annotation_font_color="#e74c3c",
+                      annotation_position="top left")
+        st.plotly_chart(_f2, use_container_width=True)
+
+        _f4 = _dark_fig("Pressure Ratio — Anomali saat Surge", "-")
+        _f4.add_trace(go.Scatter(x=_t_sim, y=_pr_sim, name="Pressure Ratio",
+                                 line=dict(color="#f39c12", width=2)))
+        _f4.add_vrect(x0=str(_t_sim[_t_surge_start]), x1=str(_t_sim[-1]),
+                      fillcolor="#e74c3c", opacity=0.12, line_width=0,
+                      annotation_text="SURGE!", annotation_font_color="#e74c3c",
+                      annotation_position="top left")
+        st.plotly_chart(_f4, use_container_width=True)
+
+    st.markdown("#### Alur Respons Sistem INTEGRATE saat Surge Terdeteksi")
+    _resp_steps = [
+        ("#2980b9", "Step 1 — Sensor Lapangan",
+         "Inlet Flow turun dari 53.4 MMSCFD -> 21.8 MMSCFD. "
+         "Pressure Transmitter & Flow Meter mengirim sinyal 4-20mA ke DCS."),
+        ("#8e44ad", "Step 2 — DCS Yokogawa CS3000",
+         "DCS memproses sinyal analog, mengkonversi ke nilai engineering. "
+         "Exaquantum historian mencatat setiap 1 menit ke database internal."),
+        ("#16a085", "Step 3 — OPC-UA Polling",
+         "INTEGRATE Edge Server melakukan polling OPC-UA setiap 1 menit ke Exaquantum. "
+         "Data masuk ke pipeline preprocessing Python."),
+        ("#d35400", "Step 4 — Rule Engine (Instant)",
+         "check_compressor_performance() -> Zone: Z1 SURGE! "
+         "Surge Margin = -19.6% (inlet_flow=21.8 < surge_flow=27.09). Deteksi < 1 detik."),
+        ("#c0392b", "Step 5 — BiLSTM ML Engine",
+         "Sequence 10 timestep terakhir -> Autoencoder reconstruction error "
+         "MAE = 0.412 >> Threshold = 0.041. Anomali KRITIS dikonfirmasi oleh AI."),
+        ("#e74c3c", "Step 6 — Alert Otomatis",
+         "Email + SMS terkirim ke engineer on-duty: "
+         "'BAHAYA SURGE C-1001B | Flow=21.8 MMSCFD | Buka Anti-Surge Valve SEGERA!'"),
+        ("#27ae60", "Step 7 — Dashboard Operator",
+         "Dashboard tampil merah: Zone Z1, Surge Margin -19.6%, "
+         "rekomendasi tindakan darurat tampil. Operator dapat monitor recovery."),
+    ]
+    for _color, _title, _msg in _resp_steps:
+        st.markdown(
+            f"<div style='background:{_color}1a; border-left:4px solid {_color}; "
+            f"padding:8px 14px; border-radius:5px; margin:5px 0;'>"
+            f"<b style='color:{_color}'>{_title}</b><br>"
+            f"<span style='color:#cccccc; font-size:13px'>{_msg}</span></div>",
+            unsafe_allow_html=True
+        )
+
+    # ── SECTION 5: Deployment Plan / Gantt ───────────────────────────
+    st.markdown("---")
+    st.markdown("### 📅 Rencana Deployment — 6 Fase Implementasi (6 Minggu)")
+
+    _gantt_data = pd.DataFrame([
+        dict(Fase="Infrastruktur",
+             Task="Fase 1: Instalasi Hardware & Jaringan",
+             Start="2025-09-01", Finish="2025-09-10",
+             Detail="Pasang industrial PC, switch, firewall, UPS di control room. Kabel LAN."),
+        dict(Fase="Integrasi DCS",
+             Task="Fase 2: Konfigurasi OPC-UA & Exaquantum",
+             Start="2025-09-08", Finish="2025-09-18",
+             Detail="Setup KEPServerEX, mapping tag OPC-UA, verifikasi dengan engineer DCS."),
+        dict(Fase="Software",
+             Task="Fase 3: Deploy INTEGRATE + End-to-End Test",
+             Start="2025-09-15", Finish="2025-09-26",
+             Detail="Install Python env, deploy app, test semua tab & alert dengan data live."),
+        dict(Fase="ML / AI",
+             Task="Fase 4: Retraining ML dengan Data Lokal",
+             Start="2025-09-22", Finish="2025-10-03",
+             Detail="Retrain BiLSTM Autoencoder dengan minimal 30 hari data DCS aktual."),
+        dict(Fase="Training",
+             Task="Fase 5: Training Operator & Engineer",
+             Start="2025-09-30", Finish="2025-10-08",
+             Detail="Pelatihan penggunaan dashboard, interpretasi zona, respons alert."),
+        dict(Fase="Produksi",
+             Task="Fase 6: Go-Live & Monitoring 30 Hari",
+             Start="2025-10-06", Finish="2025-11-05",
+             Detail="Operasional penuh. Monitoring harian, evaluasi false positive rate."),
+    ])
+
+    _color_map = {
+        "Infrastruktur": "#2980b9",
+        "Integrasi DCS": "#8e44ad",
+        "Software": "#16a085",
+        "ML / AI": "#d35400",
+        "Training": "#f39c12",
+        "Produksi": "#27ae60",
+    }
+
+    _fig_gantt = px.timeline(
+        _gantt_data, x_start="Start", x_end="Finish", y="Task",
+        color="Fase", color_discrete_map=_color_map,
+        hover_data={"Detail": True, "Start": True, "Finish": True, "Fase": False},
+        title="Timeline Implementasi INTEGRATE"
+    )
+    _fig_gantt.update_yaxes(autorange="reversed")
+    _fig_gantt.update_layout(
+        paper_bgcolor="#0e1117", plot_bgcolor="#1a1f2e",
+        font=dict(color="white"), height=340,
+        margin=dict(l=10, r=10, t=50, b=10),
+        xaxis=dict(gridcolor="#2a2f3e", title=""),
+        yaxis=dict(gridcolor="#2a2f3e", title=""),
+        legend=dict(bgcolor="#1a1f2e", bordercolor="#444", title="Fase"),
+        title_font=dict(color="#00b4d8", size=14)
+    )
+    st.plotly_chart(_fig_gantt, use_container_width=True)
+
+    _ch1, _ch2 = st.columns(2)
+    with _ch1:
+        st.markdown("**Pre-Deployment Checklist**")
+        for _item in [
+            "Rack server di control room tersedia & berventilasi",
+            "Jaringan industrial LAN terpasang & tested",
+            "OPC-UA server Exaquantum aktif & accessible",
+            "Tag mapping diverifikasi bersama engineer DCS",
+            "Firewall rules dikonfigurasi (whitelist IP server)",
+            "UPS terpasang, battery tested, runtime >= 30 menit",
+            "Python 3.11 + semua dependencies terinstall",
+            "INTEGRATE startup berhasil, load data dari OPC-UA",
+        ]:
+            st.markdown(f"- [ ] {_item}")
+
+    with _ch2:
+        st.markdown("**Post Go-Live Checklist**")
+        for _item in [
+            "Dashboard diakses dari semua workstation operator",
+            "Email alert terkirim saat uji anomali manual",
+            "ML model di-retrain dengan data DCS 30+ hari",
+            "Surge detection diverifikasi oleh process engineer",
+            "Backup otomatis SQLite database berjalan (cron)",
+            "Uptime monitoring terpasang (Supervisor + Nagios)",
+            "Dokumentasi O&M diserahkan ke tim operasi",
+            "Jadwal retraining model ditetapkan (setiap 3 bulan)",
+        ]:
+            st.markdown(f"- [ ] {_item}")
+
+    # ── SECTION 6: Network Topology ──────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 🌐 Topologi Jaringan Industrial")
+
+    _fig_net = go.Figure()
+    _fig_net.update_layout(
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1, 11]),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1, 8]),
+        height=420, paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
+        margin=dict(l=10, r=10, t=40, b=10),
+        title=dict(text="Network Topology — INTEGRATE Field Deployment",
+                   font=dict(color="#00b4d8", size=13))
+    )
+
+    _nodes = [
+        (1.0, 1.0, "Sensor\nC-1001B", "#27ae60", 0.7),
+        (1.0, 3.0, "Sensor\nP-1001A", "#27ae60", 0.7),
+        (3.5, 2.0, "Yokogawa\nCS3000 DCS", "#8e44ad", 0.9),
+        (5.5, 2.0, "Exaquantum\nHistorian", "#2980b9", 0.9),
+        (5.5, 4.5, "Firewall\nIndustrial", "#e74c3c", 0.7),
+        (7.5, 2.0, "INTEGRATE\nEdge Server", "#16a085", 1.0),
+        (7.5, 4.5, "Industrial\nSwitch LAN", "#f39c12", 0.7),
+        (9.5, 1.0, "Operator\nWS 1", "#00b4d8", 0.6),
+        (9.5, 3.0, "Operator\nWS 2", "#00b4d8", 0.6),
+        (9.5, 5.0, "VPN\nHead Office", "#9b59b6", 0.6),
+    ]
+    _edges = [
+        (0, 2, "4-20mA"), (1, 2, "HART"),
+        (2, 3, "OPC-DA"), (3, 4, "DMZ"),
+        (4, 6, "Firewall"), (3, 5, "OPC-UA"),
+        (5, 6, "Eth"), (6, 7, "HTTP"),
+        (6, 8, "HTTP"), (6, 9, "VPN"),
+    ]
+
+    for (_x1, _y1, _, _c1, _), (_x2, _y2, _, _c2, _), _lbl in [
+        (_nodes[_e[0]], _nodes[_e[1]], _e[2]) for _e in _edges
+    ]:
+        _xm, _ym = (_x1 + _x2) / 2, (_y1 + _y2) / 2
+        _fig_net.add_shape(type="line", x0=_x1, y0=_y1, x1=_x2, y1=_y2,
+                           line=dict(color="#444", width=1.5, dash="dot"))
+        _fig_net.add_annotation(x=_xm, y=_ym, text=f"<i>{_lbl}</i>",
+                                font=dict(color="#888", size=8), showarrow=False)
+
+    for _nx, _ny, _lbl, _color, _r in _nodes:
+        _fig_net.add_shape(type="circle",
+                           x0=_nx - _r, y0=_ny - _r * 0.6,
+                           x1=_nx + _r, y1=_ny + _r * 0.6,
+                           fillcolor=_color + "33", line=dict(color=_color, width=2))
+        _fig_net.add_annotation(x=_nx, y=_ny, text=f"<b>{_lbl}</b>",
+                                font=dict(color="white", size=9), showarrow=False)
+
+    st.plotly_chart(_fig_net, use_container_width=True)
+
+    st.success(
+        "**INTEGRATE siap deploy ke lapangan tanpa biaya lisensi software tambahan. "
+        "Seluruh stack menggunakan open-source. Estimasi total biaya hardware: "
+        "Rp 180 juta – Rp 250 juta (termasuk industrial PC, switch, firewall, UPS, workstation).**"
+    )
 
