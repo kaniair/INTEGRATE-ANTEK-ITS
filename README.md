@@ -1,11 +1,11 @@
-# ⚙️ INTEGRATE
+# INTEGRATE
 **Intelligent Real-Time Rotating Equipment Anomaly Detection & Performance Monitoring System**
 
 Sistem Pemantauan Pompa & Kompresor Terintegrasi Berbasis Deep Learning, Rule-Based Analytics, dan Real-Time Performance Curve
 
 ---
 
-## 🏆 Digital Hackathon AI/ML Hulu Migas 2026
+## Digital Hackathon AI/ML Hulu Migas 2026
 
 **Team ANTEK ITS:**
 - Kania Indah Ramadhan (Lead)
@@ -16,7 +16,7 @@ Sistem Pemantauan Pompa & Kompresor Terintegrasi Berbasis Deep Learning, Rule-Ba
 
 ---
 
-## ⚠️ Persyaratan Sistem
+## Persyaratan Sistem
 
 | Komponen | Versi |
 |---|---|
@@ -26,7 +26,7 @@ Sistem Pemantauan Pompa & Kompresor Terintegrasi Berbasis Deep Learning, Rule-Ba
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Windows
 
@@ -91,7 +91,7 @@ Buka browser → **http://localhost:8501**
 
 ---
 
-## 📁 Struktur Project
+## Struktur Project
 
 ```
 INTEGRATE-ANTEK-ITS/
@@ -113,7 +113,7 @@ INTEGRATE-ANTEK-ITS/
 
 ---
 
-## 🔧 Fitur Utama
+## Fitur Utama
 
 ### Equipment yang Dimonitor
 - **P-1001A** — Pompa (Centrifugal Pump)
@@ -144,7 +144,7 @@ INTEGRATE-ANTEK-ITS/
 
 ---
 
-## 📧 Konfigurasi Email Alert (Opsional)
+## Konfigurasi Email Alert (Opsional)
 
 Buat file `recruitment.env` di root folder (jangan di-commit):
 
@@ -160,7 +160,7 @@ Tanpa file ini, dashboard tetap berjalan normal — hanya fitur email alert yang
 
 ---
 
-## 🛠️ Troubleshooting
+## Troubleshooting
 
 **`ERROR: Could not find a version that satisfies the requirement tensorflow==2.15.0`**
 → Pastikan Python 3.11 yang aktif: `python --version`
