@@ -124,16 +124,6 @@ with st.sidebar:
     st.markdown('<p class="sidebar-section">Upload Data Operasi</p>', unsafe_allow_html=True)
     uploaded = st.file_uploader("CSV / Excel (ekspor Exaquantum)", type=["csv", "xlsx"])
 
-    st.markdown("---")
-    st.markdown('<p class="sidebar-section">Simulasi Real-Time</p>', unsafe_allow_html=True)
-    simulate = st.toggle("Aktifkan Simulasi", value=True)
-    refresh_sec = st.slider("Interval (detik)", 5, 60, 15)
-
-    st.markdown("---")
-    st.markdown('<p class="sidebar-section">Info Sistem</p>', unsafe_allow_html=True)
-    st.caption(f"🕐 {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
-    st.caption(f"📊 Database: {os.getenv('DB_PATH', 'integrate.db')}")
-    st.caption("v1.0.0 — ANTEK ITS")
 
 # ──────────────────────────────────────────────
 # DATA LOADING
@@ -305,6 +295,66 @@ else:
         df = load_compressor_excel(eq_id)
 
 df = df.sort_values("timestamp").reset_index(drop=True)
+
+# ──────────────────────────────────────────────
+# GLOBAL DATE RANGE FILTER
+# ──────────────────────────────────────────────
+
+_df_full = df.copy()
+_ts_full = pd.to_datetime(_df_full["timestamp"])
+_d_min   = _ts_full.min().date()
+_d_max   = _ts_full.max().date()
+
+# Reset filter when equipment changes
+if st.session_state.get("_g_eq") != eq_id:
+    st.session_state["_g_start"] = _d_min
+    st.session_state["_g_end"]   = _d_max
+    st.session_state["_g_eq"]    = eq_id
+
+if "_g_start" not in st.session_state:
+    st.session_state["_g_start"] = _d_min
+    st.session_state["_g_end"]   = _d_max
+
+with st.sidebar:
+    st.markdown("---")
+    st.markdown('<p class="sidebar-section">Filter Rentang Data</p>', unsafe_allow_html=True)
+    with st.form("global_date_form"):
+        _g_start = st.date_input(
+            "Dari", value=st.session_state["_g_start"],
+            min_value=_d_min, max_value=_d_max)
+        _g_end = st.date_input(
+            "Sampai", value=st.session_state["_g_end"],
+            min_value=_d_min, max_value=_d_max)
+        _apply_btn = st.form_submit_button(
+            "▶ Terapkan Filter", use_container_width=True,
+            type="primary")
+    if _apply_btn:
+        st.session_state["_g_start"] = _g_start
+        st.session_state["_g_end"]   = _g_end
+        st.rerun()
+
+    _n_sel = int(((_ts_full.dt.date >= st.session_state["_g_start"]) &
+                  (_ts_full.dt.date <= st.session_state["_g_end"])).sum())
+    st.caption(f"Terpilih: **{_n_sel:,}** dari {len(_df_full):,} titik data")
+
+    if st.button("🔄 Refresh Data", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+    st.markdown("---")
+    st.markdown('<p class="sidebar-section">Info Sistem</p>', unsafe_allow_html=True)
+    st.caption(f"🕐 {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+    st.caption(f"📊 Database: {os.getenv('DB_PATH', 'integrate.db')}")
+    st.caption("v1.0.0 — ANTEK ITS")
+
+# Apply filter — df ini yang dipakai di semua tab
+_g_mask = ((_ts_full.dt.date >= st.session_state["_g_start"]) &
+           (_ts_full.dt.date <= st.session_state["_g_end"]))
+df = _df_full[_g_mask].copy().reset_index(drop=True)
+
+if len(df) == 0:
+    st.warning("Tidak ada data dalam rentang tanggal yang dipilih. Ubah filter di sidebar kiri.")
+    st.stop()
 
 # ──────────────────────────────────────────────
 # ANOMALY DETECTION (Rule-Based Heuristic)
@@ -593,27 +643,11 @@ with tab2:
 
         st.markdown("---")
 
-    # ── Date range filter (berlaku untuk semua chart di tab ini) ──
-    _ts_all = pd.to_datetime(df["timestamp"])
-    _date_min_all = _ts_all.min().date()
-    _date_max_all = _ts_all.max().date()
-    _fd1, _fd2, _fd3 = st.columns([2, 2, 3])
-    with _fd1:
-        _start_date = st.date_input(
-            "Tanggal Mulai", value=_date_min_all,
-            min_value=_date_min_all, max_value=_date_max_all, key="tab2_start")
-    with _fd2:
-        _end_date = st.date_input(
-            "Tanggal Selesai", value=_date_max_all,
-            min_value=_date_min_all, max_value=_date_max_all, key="tab2_end")
-    with _fd3:
-        _mask_date = (_ts_all.dt.date >= _start_date) & (_ts_all.dt.date <= _end_date)
-        _n_sel = int(_mask_date.sum())
-        st.metric("Data Terpilih", f"{_n_sel:,} titik", delta=f"dari {len(df):,} total")
-    _df_filtered = df[_mask_date].copy().reset_index(drop=True)
-    if len(_df_filtered) == 0:
-        st.warning("Tidak ada data dalam rentang tanggal yang dipilih. Ubah filter tanggal.")
-        st.stop()
+    st.info(
+        f"Menampilkan data: **{st.session_state['_g_start'].strftime('%d %b %Y')}** "
+        f"s.d. **{st.session_state['_g_end'].strftime('%d %b %Y')}** "
+        f"({len(df):,} titik). Ubah rentang melalui filter di sidebar kiri.",
+        icon="📅")
     st.markdown("---")
 
     # ── PUMP: 2-column layout ──
@@ -700,8 +734,8 @@ with tab2:
                 _fitted = json.load(_f)
 
         flow_range  = np.linspace(26, 68, 300)
-        n_sc        = min(500, len(_df_filtered))
-        df_sc       = _df_filtered.tail(n_sc)
+        n_sc        = min(500, len(df))
+        df_sc       = df.tail(n_sc)
         ops         = comp_curves.get("operating_stats", {})
         fpr         = comp_curves["flow_pressure_ratio"]
         surge_flow  = fpr["surge_flow"]
@@ -1208,9 +1242,32 @@ with tab3:
         st.warning(f"**Zona Operasi:** {anomaly_class}\n\n**Rekomendasi:** {action}")
 
     # Raw data table
-    with st.expander("🔎 Data Mentah (100 baris terakhir)"):
-        st.dataframe(df.tail(100).sort_values("timestamp", ascending=False),
-                     use_container_width=True, hide_index=True)
+    _date_label = (f"{st.session_state['_g_start'].strftime('%d %b %Y')} — "
+                   f"{st.session_state['_g_end'].strftime('%d %b %Y')}")
+    with st.expander(f"🔎 Data Mentah ({len(df):,} baris | {_date_label})", expanded=False):
+        st.info(
+            f"Menampilkan **{len(df):,}** baris dalam rentang **{_date_label}**. "
+            f"Baris berwarna merah = terdeteksi **anomali** ({int(df['is_anomaly'].sum())} titik).",
+            icon="📅"
+        )
+
+        _disp_cols = ["timestamp"] + [c for c in avail_features if c in df.columns]
+        if "mae" in df.columns:
+            _disp_cols += ["mae"]
+        if "is_anomaly" in df.columns:
+            _disp_cols += ["is_anomaly"]
+        _df_disp = df[_disp_cols].sort_values("timestamp", ascending=False).copy()
+
+        def _color_anomaly(row):
+            if row.get("is_anomaly", False):
+                return ["background-color: #4a0000; color: #ff6b6b"] * len(row)
+            return [""] * len(row)
+
+        st.dataframe(
+            _df_disp.style.apply(_color_anomaly, axis=1),
+            use_container_width=True,
+            hide_index=True
+        )
 
 
 # ════════════════════════════════════════════════
@@ -1292,13 +1349,3 @@ with tab4:
         else:
             st.info("Tidak ada anomali untuk diekspor.")
 
-# ──────────────────────────────────────────────
-# AUTO-REFRESH
-# ──────────────────────────────────────────────
-
-if simulate:
-    import time
-    st.markdown(f"<small style='color:#555;'>Auto-refresh setiap {refresh_sec} detik. Toggle Simulasi untuk menonaktifkan.</small>",
-                unsafe_allow_html=True)
-    time.sleep(refresh_sec)
-    st.rerun()

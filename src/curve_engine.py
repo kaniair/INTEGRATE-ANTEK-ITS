@@ -64,7 +64,51 @@ def load_pump_curves(curves_path: str = "curves/pump_curves.json") -> dict:
     if not os.path.exists(curves_path):
         return _default_pump_curves()
     with open(curves_path) as f:
-        return json.load(f)
+        raw = json.load(f)
+    if "head_flow" in raw:
+        return raw
+    return _normalize_pump_curves(raw)
+
+
+def _normalize_pump_curves(raw: dict) -> dict:
+    """Normalize pump_curves.json from team's PR #3 format (uses 'head' key, absolute flows)
+    into the format expected by check_pump_performance() ('head_flow', percentage flows)."""
+    h = raw.get("head", {})
+    rated_flow = h.get("rated_flow", 371.0)
+
+    por_min_abs = h.get("por_min_flow", rated_flow * 0.6)
+    por_max_abs = h.get("por_max_flow", rated_flow * 1.1)
+    aor_min_abs = h.get("aor_min_flow", rated_flow * 0.4)
+    aor_max_abs = h.get("aor_max_flow", rated_flow * 1.2)
+
+    coeff = (h.get("rated", {}).get("coefficients")
+             or h.get("coefficients")
+             or [-0.0012, -0.1, 1954.0])
+
+    p = raw.get("power", {})
+    hp_val = p.get("rated_power_hp")
+    rated_power = p.get("rated_power") or (hp_val * 0.7457 if hp_val else 450.0)
+
+    return {
+        "equipment_id": raw.get("equipment_id", "P-1001A"),
+        "head_flow": {
+            "rated_flow": rated_flow,
+            "rated_head": h.get("rated_head_ft", 1954.0),
+            "por_min_flow": por_min_abs / rated_flow * 100,
+            "por_max_flow": por_max_abs / rated_flow * 100,
+            "aor_min_flow": aor_min_abs / rated_flow * 100,
+            "aor_max_flow": aor_max_abs / rated_flow * 100,
+            "coefficients": coeff,
+        },
+        "npsh": {
+            "npsha": raw.get("npsh", {}).get("npsha", 25.0),
+            "npshr_coefficients": raw.get("npsh", {}).get("npshr_coefficients", [0.0001, 0.05, 3.0]),
+        },
+        "power": {
+            "rated_power": rated_power,
+            "coefficients": p.get("coefficients", [0.001, 0.5, 50.0]),
+        },
+    }
 
 
 def load_compressor_curves(curves_path: str = "curves/compressor_C1001B_curves.json") -> dict:
