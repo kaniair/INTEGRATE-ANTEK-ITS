@@ -120,15 +120,15 @@ INTEGRATE-ANTEK-ITS/
 - **C-1001B** — Kompresor Sentrifugal Donggi BCL305
 
 ### Tab Dashboard
-1. **📊 Dashboard Real-Time** — KPI metrics, time series, anomaly detection
-2. **📈 Kurva Performa** — 4 performance curve charts dengan speed lines A–E:
+1. **📊 Dashboard Real-Time** (KPI metrics, time series, anomaly detection)
+2. **📈 Kurva Performa** (4 performance curve charts dengan speed lines A–E):
    - Polytropic Head vs Standard Inlet Flow
    - Pressure Ratio vs Standard Inlet Flow
    - Discharge Pressure vs Standard Inlet Flow
    - Shaft Power vs Standard Inlet Flow
-   - Filter rentang tanggal + analisis per grafik + kesimpulan akhir
-3. **🤖 Deteksi Anomali** — BiLSTM Autoencoder + Rule Engine
-4. **📋 Laporan** — Export & history
+   - Filter rentang tanggal, analisis per grafik, kesimpulan akhir
+3. **🤖 Deteksi Anomali** (BiLSTM Autoencoder + Rule Engine)
+4. **📋 Laporan** (Export & history)
 
 ### Klasifikasi Zona Kompresor C-1001B (API 617 / ASME PTC 10)
 | Zona | Keterangan |
