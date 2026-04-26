@@ -1,11 +1,11 @@
-# ⚙️ INTEGRATE
+#INTEGRATE
 **Intelligent Real-Time Rotating Equipment Anomaly Detection & Performance Monitoring System**
 
 Sistem Pemantauan Pompa & Kompresor Terintegrasi Berbasis Deep Learning, Rule-Based Analytics, dan Real-Time Performance Curve
 
 ---
 
-## 🏆 Digital Hackathon AI/ML Hulu Migas 2026
+##Digital Hackathon AI/ML Hulu Migas 2026
 
 **Team ANTEK ITS:**
 - Kania Indah Ramadhan (Lead)
@@ -16,7 +16,7 @@ Sistem Pemantauan Pompa & Kompresor Terintegrasi Berbasis Deep Learning, Rule-Ba
 
 ---
 
-## 🚀 Quick Start
+##Quick Start
 
 ```bash
 # 1. Clone repository
