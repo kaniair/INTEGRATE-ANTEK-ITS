@@ -1294,21 +1294,93 @@ with tab3:
 
     _date_label = (f"{st.session_state['_g_start'].strftime('%d %b %Y')} — "
                    f"{st.session_state['_g_end'].strftime('%d %b %Y')}")
-    with st.expander(f"🔎 Data Mentah ({len(df):,} baris | {_date_label})", expanded=False):
-        st.info(f"Menampilkan **{len(df):,}** baris. Merah = anomali ({int(df['is_anomaly'].sum())} titik).",
-                icon="📅")
+    _n_anom_disp = int(df["is_anomaly"].sum()) if "is_anomaly" in df.columns else 0
+    st.markdown("---")
+    st.markdown(f"#### 🔎 Data Mentah — Rentang {_date_label}")
+    st.info(
+        f"**{len(df):,}** baris data dalam rentang ini. "
+        f"Anomali terdeteksi: **{_n_anom_disp}** baris "
+        f"({_n_anom_disp / max(len(df), 1) * 100:.1f}%).",
+        icon="📅"
+    )
+
+    with st.expander(f"Tampilkan tabel data ({len(df):,} baris)", expanded=True):
         _disp_cols = ["timestamp"] + [c for c in avail_features if c in df.columns]
         if "mae" in df.columns:        _disp_cols += ["mae"]
         if "is_anomaly" in df.columns: _disp_cols += ["is_anomaly"]
         _df_disp = df[_disp_cols].sort_values("timestamp", ascending=False).copy()
 
-        def _color_anomaly(row):
-            if row.get("is_anomaly", False):
-                return ["background-color: #4a0000; color: #ff6b6b"] * len(row)
-            return [""] * len(row)
+        _anom_flags = (
+            _df_disp["is_anomaly"].astype(bool)
+            if "is_anomaly" in _df_disp.columns
+            else pd.Series([False] * len(_df_disp), index=_df_disp.index)
+        )
+        _anom_vals = _anom_flags.values
 
-        st.dataframe(_df_disp.style.apply(_color_anomaly, axis=1),
-                     use_container_width=True, hide_index=True)
+        # Kolom Status selalu ada sebagai indikator visual teks
+        _df_disp.insert(1, "Status", _anom_flags.map({True: "⚠️ ANOMALI", False: "✅ Normal"}))
+
+        _col_cfg = {
+            "Status": st.column_config.TextColumn("Status", width="small"),
+            "timestamp": st.column_config.DatetimeColumn("Timestamp", format="DD/MM/YY HH:mm"),
+            "mae": st.column_config.NumberColumn("MAE", format="%.5f"),
+            "is_anomaly": st.column_config.CheckboxColumn("Anomali"),
+        }
+
+        # Streamlit strips Styler bila total cells > ~150k
+        # Gunakan batas 12.000 baris agar highlight baris merah tetap aktif
+        _MAX_STYLED_ROWS = 12_000
+
+        def _hl_col(col):
+            return [
+                "background-color: #4a0000; color: #ff6b6b" if f else ""
+                for f in _anom_vals[: len(col)]
+            ]
+
+        if len(_df_disp) <= _MAX_STYLED_ROWS:
+            pd.set_option("styler.render.max_elements",
+                          _df_disp.shape[0] * _df_disp.shape[1] + 1)
+            st.dataframe(
+                _df_disp.style.apply(_hl_col, axis=0),
+                use_container_width=True, hide_index=True,
+                column_config=_col_cfg,
+            )
+        else:
+            # Dataset terlalu besar untuk Streamlit Styler → tampilkan semua tanpa warna baris
+            # + tabel terpisah anomali-saja yang selalu berwarna merah
+            st.caption(
+                f"⚠️ {len(_df_disp):,} baris terlalu besar untuk highlight penuh. "
+                "Tabel lengkap ditampilkan tanpa warna baris; "
+                "highlight merah tersedia di bagian **'Baris Anomali'** di bawah. "
+                "Persempit rentang tanggal untuk highlight di seluruh tabel."
+            )
+            st.dataframe(
+                _df_disp,
+                use_container_width=True, hide_index=True,
+                column_config=_col_cfg,
+            )
+
+            # Tabel anomali-saja: selalu kecil, selalu merah
+            _df_anom_only = _df_disp[_anom_vals].copy()
+            if len(_df_anom_only) > 0:
+                st.markdown(
+                    f"<div style='margin-top:12px; padding:6px 12px; "
+                    f"background:#4a0000; border-radius:6px; color:#ff6b6b; font-weight:bold;'>"
+                    f"🔴 Baris Anomali Terdeteksi ({len(_df_anom_only):,} baris)</div>",
+                    unsafe_allow_html=True
+                )
+                _anom_only_flags = pd.Series([True] * len(_df_anom_only))
+                def _hl_col_anom(col):
+                    return ["background-color: #4a0000; color: #ff6b6b"] * len(col)
+                pd.set_option("styler.render.max_elements",
+                              _df_anom_only.shape[0] * _df_anom_only.shape[1] + 1)
+                st.dataframe(
+                    _df_anom_only.style.apply(_hl_col_anom, axis=0),
+                    use_container_width=True, hide_index=True,
+                    column_config=_col_cfg,
+                )
+            else:
+                st.success("Tidak ada anomali dalam rentang tanggal ini.")
 
 
 # ════════════════════════════════════════════════
@@ -1386,6 +1458,789 @@ with tab4:
 # ════════════════════════════════════════════════
 
 with tab5:
-    # [PASTE SELURUH KODE TAB 5 DARI VERSI SEBELUMNYA — TIDAK ADA YANG BERUBAH]
-    # Salin dari "with tab5:" sampai akhir file dari kode yang kamu punya sekarang
-    pass
+    _eq_label = "Pompa P-1001A (DMF Pump)" if is_pump else "Kompresor C-1001B (BCL305)"
+    st.subheader(f"🏭 Implementasi Lapangan — {_eq_label}")
+    st.markdown(
+        f"Panduan deployment **INTEGRATE** untuk **{_eq_label}** dari lingkungan development "
+        "ke sistem lapangan industri migas yang terintegrasi dengan DCS, sensor real-time, dan jaringan industrial."
+    )
+
+    # ── SECTION 1: Architecture Diagram 5 Layer ──────────────────────
+    st.markdown("---")
+    st.markdown("### 📐 Arsitektur Sistem 5 Layer")
+    st.caption("Dari sensor fisik di lapangan hingga dashboard operator & monitoring jarak jauh")
+
+    _fig_arch = go.Figure()
+    _fig_arch.update_layout(
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[0, 10]),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[0, 14]),
+        height=600, margin=dict(l=10, r=10, t=50, b=10),
+        paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
+    )
+
+    _arch_layers = [
+        dict(y0=0.2, y1=1.6, fill="#0d2b1a", line_c="#27ae60",
+             title="LAYER 1 — ROTATING EQUIPMENT (Physical Asset)",
+             sub="Compressor C-1001B BCL305 | Pump P-1001A | Anti-Surge Valve | Piping"),
+        dict(y0=2.2, y1=3.6, fill="#0d1b2e", line_c="#2980b9",
+             title="LAYER 2 — FIELD INSTRUMENTS & SENSORS",
+             sub="Pressure Transmitter | Coriolis Flow Meter | RTD Temperature | Vibration Probe | Speed Sensor"),
+        dict(y0=4.2, y1=5.6, fill="#1e0d2e", line_c="#8e44ad",
+             title="LAYER 3 — DCS / HISTORIAN (Exaquantum)",
+             sub="Yokogawa CS3000 DCS | Exaquantum R3.80 Historian | OPC-UA Server"),
+        dict(y0=6.2, y1=7.6, fill="#0d2e0d", line_c="#16a085",
+             title="LAYER 4 — INTEGRATE EDGE SERVER (Control Room)",
+             sub="Industrial PC 24/7 | Python 3.11 | Streamlit | BiLSTM ML Engine | Rule Engine | SQLite | Email Alert"),
+        dict(y0=8.2, y1=9.6, fill="#2e0d0d", line_c="#c0392b",
+             title="LAYER 5 — CONTROL ROOM & REMOTE MONITORING",
+             sub="Operator Workstation | Head Office VPN Tunnel | SMS / Email Notifikasi Engineer"),
+    ]
+
+    for _ly in _arch_layers:
+        _ym = (_ly["y0"] + _ly["y1"]) / 2
+        _fig_arch.add_shape(type="rect", x0=0.3, y0=_ly["y0"], x1=9.7, y1=_ly["y1"],
+                            fillcolor=_ly["fill"], line=dict(color=_ly["line_c"], width=2))
+        _fig_arch.add_annotation(x=5, y=_ym + 0.30,
+                                 text=f"<b style='font-size:13px'>{_ly['title']}</b>",
+                                 font=dict(color="white", size=12), showarrow=False)
+        _fig_arch.add_annotation(x=5, y=_ym - 0.25, text=_ly["sub"],
+                                 font=dict(color="#aaaaaa", size=10), showarrow=False)
+
+    _conn_arrows = [
+        (1.6, 2.2, "4-20mA / HART / PROFIBUS"),
+        (3.6, 4.2, "OPC-DA / Modbus TCP"),
+        (5.6, 6.2, "OPC-UA Client / Direct SQL Query"),
+        (7.6, 8.2, "HTTP (LAN) / VPN Tunnel"),
+    ]
+    for _ya, _yb, _lbl in _conn_arrows:
+        _ym = (_ya + _yb) / 2
+        _fig_arch.add_annotation(x=5, y=_yb, ax=5, ay=_ya, axref="x", ayref="y",
+                                 arrowhead=3, arrowsize=1.2, arrowwidth=2,
+                                 arrowcolor="#f39c12", showarrow=True, text="")
+        _fig_arch.add_annotation(x=7.5, y=_ym, text=f"<i>{_lbl}</i>",
+                                 font=dict(color="#f39c12", size=9), showarrow=False,
+                                 bgcolor="#1a1408", bordercolor="#f39c12",
+                                 borderwidth=1, borderpad=3)
+
+    _fig_arch.add_annotation(x=5, y=13.2,
+                             text="<b>INTEGRATE — Field Deployment Architecture (API 617 / API 610)</b>",
+                             font=dict(color="#00b4d8", size=15), showarrow=False)
+    st.plotly_chart(_fig_arch, use_container_width=True)
+
+    # ── SECTION 2: Hardware & Software Specs ─────────────────────────
+    st.markdown("---")
+    st.markdown("### 🔧 Bill of Materials — Hardware & Software")
+
+    _col_hw1, _col_hw2 = st.columns(2)
+
+    with _col_hw1:
+        st.markdown("**Hardware Utama**")
+        st.dataframe(pd.DataFrame({
+            "Komponen": [
+                "Edge Server (Industrial PC)",
+                "Managed Industrial Switch",
+                "Industrial Firewall",
+                "UPS Backup Power",
+                "Operator Workstation",
+                "OPC-UA Gateway",
+                "Serial-to-Ethernet Converter",
+            ],
+            "Model / Spesifikasi": [
+                "ADVANTECH MIC-7700 | i7 | 32GB RAM | 1TB SSD",
+                "Cisco IE-2000-16TC | 24-port | DIN-rail",
+                "Hirschmann EAGLE One | Industrial-grade",
+                "APC Smart-UPS 1500VA | 230V | 30 min backup",
+                "Dell OptiPlex 7090 | i5 | 16GB | 27 inci",
+                "Kepware KEPServerEX v6.15",
+                "Moxa NPort 5150 | RS-232/485 ke Ethernet",
+            ],
+            "Qty": [1, 1, 1, 2, 2, 1, 2],
+            "Fungsi Utama": [
+                "Jalankan INTEGRATE (ML + Dashboard) 24/7",
+                "Jaringan industrial LAN terisolasi",
+                "Segmentasi & keamanan jaringan OT/IT",
+                "Power backup server + switch jika PLN mati",
+                "Akses dashboard oleh operator",
+                "Bridge OPC-UA ke DCS Yokogawa",
+                "Koneksi instrument legacy Modbus RTU",
+            ]
+        }), use_container_width=True, hide_index=True)
+
+    with _col_hw2:
+        st.markdown("**Software Stack (Semua Open Source / Free)**")
+        st.dataframe(pd.DataFrame({
+            "Software": [
+                "Ubuntu Server 22.04 LTS", "Python 3.11.x", "Streamlit 1.35.0",
+                "TensorFlow 2.15.0", "opcua-asyncio", "SQLite + SQLAlchemy",
+                "Nginx (reverse proxy)", "Supervisor",
+            ],
+            "Fungsi": [
+                "OS stabil & aman untuk server industri",
+                "Runtime seluruh sistem INTEGRATE",
+                "Web dashboard engine (no browser plugin)",
+                "BiLSTM Autoencoder inference",
+                "Koneksi real-time ke OPC-UA Server DCS",
+                "Penyimpanan log anomali lokal",
+                "HTTPS + akses multi-user LAN",
+                "Auto-restart INTEGRATE jika crash",
+            ],
+            "Lisensi": [
+                "Free (Open Source)", "Free", "Apache 2.0", "Apache 2.0",
+                "MIT", "MIT/BSD", "BSD", "MIT"
+            ]
+        }), use_container_width=True, hide_index=True)
+
+    st.markdown("**Perbandingan: Development (Laptop) vs Production (Field Server)**")
+    st.dataframe(pd.DataFrame({
+        "Aspek": [
+            "Hardware", "OS", "Sumber Data", "Protokol", "Reliabilitas",
+            "Keamanan Jaringan", "Kapasitas Historis", "Akses Multi-User", "Pemulihan Otomatis"
+        ],
+        "Laptop (Development Sekarang)": [
+            "Consumer laptop", "Windows 10/11", "File Excel / CSV manual upload",
+            "File system lokal", "Hanya aktif saat user membuka",
+            "Tidak ada segmentasi jaringan", "Terbatas kapasitas RAM/disk",
+            "Tidak (local only)", "Restart manual oleh user"
+        ],
+        "Industrial PC (Production Lapangan)": [
+            "ADVANTECH MIC-7700 rated 24/7", "Ubuntu Server 22.04 LTS",
+            "OPC-UA polling otomatis dari Exaquantum",
+            "OPC-UA / Modbus TCP / Direct SQL",
+            "99.9% uptime, auto-restart via Supervisor",
+            "Firewall industrial + VLAN OT terisolasi",
+            "1TB SSD lokal + archive NAS opsional",
+            "Ya (LAN) + VPN remote head office",
+            "Supervisor watchdog + UPS power backup"
+        ]
+    }), use_container_width=True, hide_index=True)
+
+    # ── SECTION 3: OPC-UA Tag Mapping ────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 🔗 Pemetaan Tag OPC-UA — Exaquantum ke INTEGRATE")
+    st.caption("Tag NodeId yang harus dikonfigurasi di KEPServerEX untuk equipment aktif")
+
+    if is_pump:
+        st.dataframe(pd.DataFrame({
+            "Tag Exaquantum (OPC-UA NodeId)": [
+                "ns=2;s=P1001A.FlowRate.PV",
+                "ns=2;s=P1001A.SuctionPressure.PV",
+                "ns=2;s=P1001A.DischargePressure.PV",
+                "ns=2;s=P1001A.Temperature.PV",
+                "ns=2;s=P1001A.MotorCurrent.PV",
+                "ns=2;s=P1001A.SealPressure.PV",
+            ],
+            "Kolom INTEGRATE": [
+                "flow_rate", "suction_pressure", "discharge_pressure",
+                "temperature", "motor_current", "seal_pressure",
+            ],
+            "Satuan": ["BPD", "psig", "psig", "degF", "A", "psig"],
+            "Interval Poll": ["5 min", "5 min", "5 min", "5 min", "5 min", "5 min"],
+            "Alert Threshold": [
+                "< 5000 BPD (AOR Low)",
+                "< 140 atau > 185 psig",
+                "< 900 atau > 1200 psig",
+                "> 130 degF",
+                "> 200 A",
+                "< 25 psig (kebocoran seal)",
+            ],
+            "Sensor Fisik": [
+                "FT-201 Coriolis Flow Meter (Emerson F300)",
+                "PT-201 Pressure Transmitter (Rosemount 3051)",
+                "PT-202 Pressure Transmitter (Rosemount 3051)",
+                "TT-201 RTD Pt100 (4-wire)",
+                "IT-201 Current Transformer (100/5A)",
+                "PT-203 Differential Pressure Tx (Rosemount 2051)",
+            ],
+        }), use_container_width=True, hide_index=True)
+    else:
+        st.dataframe(pd.DataFrame({
+            "Tag Exaquantum (OPC-UA NodeId)": [
+                "ns=2;s=C1001B.InletFlow.PV",
+                "ns=2;s=C1001B.SuctionPressure.PV",
+                "ns=2;s=C1001B.DischargePressure.PV",
+                "ns=2;s=C1001B.SuctionTemp.PV",
+                "ns=2;s=C1001B.DischargeTemp.PV",
+                "ns=2;s=C1001B.ShaftPower.PV",
+                "ns=2;s=C1001B.Speed.PV",
+                "ns=2;s=C1001B.PressureRatio.PV",
+            ],
+            "Kolom INTEGRATE": [
+                "inlet_flow", "suction_pressure", "discharge_pressure",
+                "T_suction_F", "T_discharge_F", "shaft_power", "speed_rpm", "pressure_ratio",
+            ],
+            "Satuan": ["MMSCFD", "kg/cm2", "kg/cm2", "degF", "degF", "kW", "RPM", "-"],
+            "Interval Poll": ["1 min", "1 min", "1 min", "5 min", "5 min", "1 min", "1 min", "1 min"],
+            "Alert Threshold": [
+                "< 27.09 MMSCFD = SURGE",
+                "< 33 atau > 45 kg/cm2",
+                "< 55 atau > 70 kg/cm2",
+                "> 115 degF",
+                "> 220 degF",
+                "> 1408 kW (110% rated)",
+                "< 8500 atau > 13500 RPM",
+                "< 1.2 atau > 2.0",
+            ],
+            "Sensor Fisik": [
+                "FT-101 Coriolis Flow Meter (Emerson F300)",
+                "PT-101 Pressure Transmitter (Rosemount 3051)",
+                "PT-102 Pressure Transmitter (Rosemount 3051)",
+                "TT-101 RTD Pt100 (suction)",
+                "TT-102 RTD Pt100 (discharge)",
+                "Power Meter via Speed × Torque",
+                "ST-101 Magnetic Speed Sensor",
+                "Calculated: PT-102 / PT-101",
+            ],
+        }), use_container_width=True, hide_index=True)
+
+    # ── SECTION 4: Field Scenario Simulation ─────────────────────────
+    st.markdown("---")
+
+    def _sim_fig(title, ylab):
+        _f = go.Figure()
+        _f.update_layout(
+            title=title, height=300,
+            paper_bgcolor="#0e1117", plot_bgcolor="#1a1f2e",
+            font=dict(color="white"), margin=dict(l=10, r=10, t=40, b=10),
+            xaxis=dict(gridcolor="#2a2f3e"),
+            yaxis=dict(gridcolor="#2a2f3e", title=ylab),
+            legend=dict(bgcolor="#1a1f2e", bordercolor="#444")
+        )
+        return _f
+
+    np.random.seed(99)
+    _n_sim = 60
+    _t_sim = pd.date_range("2025-08-27 08:00", periods=_n_sim, freq="1min")
+    _idx = np.arange(_n_sim)
+
+    if is_pump:
+        _t_cav_start = 38
+        st.markdown("### 🔄 Simulasi Skenario Lapangan — Kavitasi / Low-Flow Pompa P-1001A")
+        st.caption(
+            "Simulasi interaktif bagaimana INTEGRATE mendeteksi dan merespons kejadian kavitasi "
+            "akibat low-flow pada pompa P-1001A: dari sensor → DCS → OPC-UA → ML Engine → Alert operator"
+        )
+
+        # Synthetic cavitation scenario
+        _flow_p = np.clip(np.where(
+            _idx < _t_cav_start,
+            12720 + np.random.normal(0, 150, _n_sim),
+            12720 - np.linspace(0, 9500, _n_sim) + np.random.normal(0, 80, _n_sim)
+        ), 1200, 14000)
+        _dp_p = np.clip(np.where(
+            _idx < _t_cav_start,
+            918 + np.random.normal(0, 5, _n_sim),
+            918 - np.linspace(0, 310, _n_sim) + np.random.normal(0, 4, _n_sim)
+        ), 300, 960)
+        _npsha_p = np.clip(np.where(
+            _idx < _t_cav_start,
+            28 + np.random.normal(0, 0.4, _n_sim),
+            28 - np.linspace(0, 18, _n_sim) + np.random.normal(0, 0.3, _n_sim)
+        ), 4, 32)
+        _curr_p = np.clip(np.where(
+            _idx < _t_cav_start,
+            145 + np.random.normal(0, 2, _n_sim),
+            145 + np.linspace(0, 55, _n_sim) + np.random.normal(0, 2, _n_sim)
+        ), 140, 210)
+
+        _pc1, _pc2 = st.columns(2)
+        with _pc1:
+            _pf1 = _sim_fig("Flow Rate — Low-Flow Menuju Kavitasi", "BPD")
+            _pf1.add_trace(go.Scatter(x=_t_sim, y=_flow_p, name="Flow Rate",
+                                      line=dict(color="#3498db", width=2)))
+            _pf1.add_hline(y=5700, line=dict(color="#e74c3c", width=2, dash="dash"),
+                           annotation_text="AOR Min 5700 BPD", annotation_font_color="#e74c3c",
+                           annotation_position="top left")
+            _pf1.add_hline(y=7632, line=dict(color="#f39c12", width=1.5, dash="dot"),
+                           annotation_text="POR Min 7632 BPD", annotation_font_color="#f39c12",
+                           annotation_position="bottom right")
+            _pf1.add_vrect(x0=str(_t_sim[_t_cav_start]), x1=str(_t_sim[-1]),
+                           fillcolor="#e74c3c", opacity=0.12, line_width=0,
+                           annotation_text="KAVITASI!", annotation_font_color="#e74c3c",
+                           annotation_position="top left")
+            st.plotly_chart(_pf1, use_container_width=True)
+
+            _pf3 = _sim_fig("Motor Current — Spike saat Kavitasi", "Ampere")
+            _pf3.add_trace(go.Scatter(x=_t_sim, y=_curr_p, name="Motor Current",
+                                      line=dict(color="#9b59b6", width=2)))
+            _pf3.add_hline(y=175, line=dict(color="#f39c12", width=1.5, dash="dash"),
+                           annotation_text="Warning 175 A", annotation_font_color="#f39c12")
+            _pf3.add_hline(y=200, line=dict(color="#e74c3c", width=2, dash="dash"),
+                           annotation_text="KRITIS 200 A", annotation_font_color="#e74c3c")
+            _pf3.add_vrect(x0=str(_t_sim[_t_cav_start]), x1=str(_t_sim[-1]),
+                           fillcolor="#e74c3c", opacity=0.12, line_width=0)
+            st.plotly_chart(_pf3, use_container_width=True)
+
+        with _pc2:
+            _pf2 = _sim_fig("Differential Pressure — Turun saat Low-Flow", "psig")
+            _pf2.add_trace(go.Scatter(x=_t_sim, y=_dp_p, name="Diff Pressure",
+                                      line=dict(color="#2ecc71", width=2)))
+            _pf2.add_vrect(x0=str(_t_sim[_t_cav_start]), x1=str(_t_sim[-1]),
+                           fillcolor="#e74c3c", opacity=0.12, line_width=0,
+                           annotation_text="KAVITASI!", annotation_font_color="#e74c3c",
+                           annotation_position="top left")
+            st.plotly_chart(_pf2, use_container_width=True)
+
+            _npshr_vals = 3.0 + 0.0001 * (_flow_p * 42.0 / 1440.0) ** 2
+            _pf4 = _sim_fig("NPSHa vs NPSHr — Margin Kavitasi", "ft")
+            _pf4.add_trace(go.Scatter(x=_t_sim, y=_npsha_p, name="NPSHa",
+                                      line=dict(color="#3498db", width=2)))
+            _pf4.add_trace(go.Scatter(x=_t_sim, y=_npshr_vals, name="NPSHr",
+                                      line=dict(color="#e74c3c", width=2, dash="dash")))
+            _pf4.add_vrect(x0=str(_t_sim[_t_cav_start]), x1=str(_t_sim[-1]),
+                           fillcolor="#e74c3c", opacity=0.12, line_width=0,
+                           annotation_text="NPSHa < NPSHr", annotation_font_color="#e74c3c",
+                           annotation_position="top left")
+            st.plotly_chart(_pf4, use_container_width=True)
+
+        st.markdown("#### Alur Respons Sistem INTEGRATE saat Kavitasi Terdeteksi")
+        for _color, _title, _msg in [
+            ("#2980b9", "Step 1 — Sensor Lapangan",
+             "Flow Rate turun dari 12720 BPD → 3220 BPD. FT-201 Coriolis & PT-201 mengirim sinyal 4-20mA ke DCS."),
+            ("#8e44ad", "Step 2 — DCS Yokogawa CS3000",
+             "DCS memproses sinyal, mencatat ke Exaquantum historian setiap 5 menit."),
+            ("#16a085", "Step 3 — OPC-UA Polling",
+             "INTEGRATE Edge Server polling OPC-UA setiap 5 menit. Data masuk ke pipeline preprocessing Python."),
+            ("#d35400", "Step 4 — Rule Engine (Instant)",
+             "check_pump_performance() → Zone: AOR Low! Flow = 3220 BPD < AOR Min 5700 BPD. Deteksi < 1 detik."),
+            ("#c0392b", "Step 5 — BiLSTM ML Engine",
+             "MAE = 0.38 >> Threshold = 0.032. Anomali KRITIS dikonfirmasi oleh AI (pola kavitasi terdeteksi)."),
+            ("#e74c3c", "Step 6 — Alert Otomatis",
+             "Email + SMS ke engineer: 'BAHAYA KAVITASI P-1001A | Flow=3220 BPD | Buka bypass valve / cek suction SEGERA!'"),
+            ("#27ae60", "Step 7 — Dashboard Operator",
+             "Dashboard merah: Zone AOR Low, NPSHa < NPSHr, rekomendasi tindakan darurat tampil."),
+        ]:
+            st.markdown(
+                f"<div style='background:{_color}1a; border-left:4px solid {_color}; "
+                f"padding:8px 14px; border-radius:5px; margin:5px 0;'>"
+                f"<b style='color:{_color}'>{_title}</b><br>"
+                f"<span style='color:#cccccc; font-size:13px'>{_msg}</span></div>",
+                unsafe_allow_html=True
+            )
+
+    else:
+        _t_surge_start = 42
+        st.markdown("### 🔄 Simulasi Skenario Lapangan — Kejadian Surge Kompresor C-1001B")
+        st.caption(
+            "Simulasi interaktif bagaimana INTEGRATE mendeteksi dan merespons kejadian surge "
+            "secara real-time: dari sensor → DCS → OPC-UA → ML Engine → Alert operator"
+        )
+
+        _flow_sim = np.clip(np.where(
+            _idx < _t_surge_start,
+            53.4 + np.random.normal(0, 0.8, _n_sim),
+            53.4 - np.linspace(0, 32, _n_sim) + np.random.normal(0, 0.4, _n_sim)
+        ), 18, 60)
+        _hp_sim = np.clip(np.where(
+            _idx < _t_surge_start,
+            79.5 + np.random.normal(0, 0.5, _n_sim),
+            79.5 + np.linspace(0, 18, _n_sim) + np.random.normal(0, 0.4, _n_sim)
+        ), 60, 102)
+        _sp_sim = np.clip(np.where(
+            _idx < _t_surge_start,
+            1243 + np.random.normal(0, 15, _n_sim),
+            1243 + np.linspace(0, 320, _n_sim) + np.random.normal(0, 12, _n_sim)
+        ), 800, 1600)
+        _pr_sim = np.where(
+            _idx < _t_surge_start,
+            1.767 + np.random.normal(0, 0.01, _n_sim),
+            1.767 + np.linspace(0, 0.12, _n_sim) + np.random.normal(0, 0.008, _n_sim)
+        )
+
+        _sc1, _sc2 = st.columns(2)
+        with _sc1:
+            _f1 = _sim_fig("Inlet Flow — Surge Event Simulation", "MMSCFD")
+            _f1.add_trace(go.Scatter(x=_t_sim, y=_flow_sim, name="Inlet Flow",
+                                     line=dict(color="#3498db", width=2)))
+            _f1.add_hline(y=27.09, line=dict(color="#e74c3c", width=2, dash="dash"),
+                          annotation_text="Surge Line 27.09", annotation_font_color="#e74c3c",
+                          annotation_position="top left")
+            _f1.add_hline(y=29.54, line=dict(color="#f39c12", width=1.5, dash="dot"),
+                          annotation_text="Protection 29.54", annotation_font_color="#f39c12",
+                          annotation_position="bottom right")
+            _f1.add_vrect(x0=str(_t_sim[_t_surge_start]), x1=str(_t_sim[-1]),
+                          fillcolor="#e74c3c", opacity=0.12, line_width=0,
+                          annotation_text="SURGE!", annotation_font_color="#e74c3c",
+                          annotation_position="top left")
+            st.plotly_chart(_f1, use_container_width=True)
+
+            _f3 = _sim_fig("Shaft Power — Overload saat Surge", "kW")
+            _f3.add_trace(go.Scatter(x=_t_sim, y=_sp_sim, name="Shaft Power",
+                                     line=dict(color="#9b59b6", width=2)))
+            _f3.add_hline(y=1280, line=dict(color="#f39c12", width=1.5, dash="dash"),
+                          annotation_text="Rated 1280 kW", annotation_font_color="#f39c12")
+            _f3.add_hline(y=1408, line=dict(color="#e74c3c", width=2, dash="dash"),
+                          annotation_text="KRITIS 110%", annotation_font_color="#e74c3c")
+            _f3.add_vrect(x0=str(_t_sim[_t_surge_start]), x1=str(_t_sim[-1]),
+                          fillcolor="#e74c3c", opacity=0.12, line_width=0)
+            st.plotly_chart(_f3, use_container_width=True)
+
+        with _sc2:
+            _f2 = _sim_fig("Polytropic Head — Naik saat Surge", "kJ/kg")
+            _f2.add_trace(go.Scatter(x=_t_sim, y=_hp_sim, name="Poly Head",
+                                     line=dict(color="#2ecc71", width=2)))
+            _f2.add_vrect(x0=str(_t_sim[_t_surge_start]), x1=str(_t_sim[-1]),
+                          fillcolor="#e74c3c", opacity=0.12, line_width=0,
+                          annotation_text="SURGE!", annotation_font_color="#e74c3c",
+                          annotation_position="top left")
+            st.plotly_chart(_f2, use_container_width=True)
+
+            _f4 = _sim_fig("Pressure Ratio — Anomali saat Surge", "-")
+            _f4.add_trace(go.Scatter(x=_t_sim, y=_pr_sim, name="Pressure Ratio",
+                                     line=dict(color="#f39c12", width=2)))
+            _f4.add_vrect(x0=str(_t_sim[_t_surge_start]), x1=str(_t_sim[-1]),
+                          fillcolor="#e74c3c", opacity=0.12, line_width=0,
+                          annotation_text="SURGE!", annotation_font_color="#e74c3c",
+                          annotation_position="top left")
+            st.plotly_chart(_f4, use_container_width=True)
+
+        st.markdown("#### Alur Respons Sistem INTEGRATE saat Surge Terdeteksi")
+        for _color, _title, _msg in [
+            ("#2980b9", "Step 1 — Sensor Lapangan",
+             "Inlet Flow turun dari 53.4 MMSCFD → 21.8 MMSCFD. Pressure Transmitter & Flow Meter mengirim sinyal 4-20mA ke DCS."),
+            ("#8e44ad", "Step 2 — DCS Yokogawa CS3000",
+             "DCS memproses sinyal analog, mengkonversi ke nilai engineering. Exaquantum historian mencatat setiap 1 menit."),
+            ("#16a085", "Step 3 — OPC-UA Polling",
+             "INTEGRATE Edge Server polling OPC-UA setiap 1 menit ke Exaquantum. Data masuk ke pipeline preprocessing Python."),
+            ("#d35400", "Step 4 — Rule Engine (Instant)",
+             "check_compressor_performance() → Zone: Z1 SURGE! Surge Margin = -19.6%. Deteksi < 1 detik."),
+            ("#c0392b", "Step 5 — BiLSTM ML Engine",
+             "MAE = 0.412 >> Threshold = 0.041. Anomali KRITIS dikonfirmasi oleh AI."),
+            ("#e74c3c", "Step 6 — Alert Otomatis",
+             "Email + SMS ke engineer: 'BAHAYA SURGE C-1001B | Flow=21.8 MMSCFD | Buka Anti-Surge Valve SEGERA!'"),
+            ("#27ae60", "Step 7 — Dashboard Operator",
+             "Dashboard merah: Zone Z1, Surge Margin -19.6%, rekomendasi tindakan darurat tampil."),
+        ]:
+            st.markdown(
+                f"<div style='background:{_color}1a; border-left:4px solid {_color}; "
+                f"padding:8px 14px; border-radius:5px; margin:5px 0;'>"
+                f"<b style='color:{_color}'>{_title}</b><br>"
+                f"<span style='color:#cccccc; font-size:13px'>{_msg}</span></div>",
+                unsafe_allow_html=True
+            )
+
+    # ── SECTION 5: Deployment Plan / Gantt ───────────────────────────
+    st.markdown("---")
+    st.markdown("### 📅 Rencana Deployment — 6 Fase Implementasi (6 Minggu)")
+
+    _gantt_data = pd.DataFrame([
+        dict(Fase="Infrastruktur", Task="Fase 1: Instalasi Hardware & Jaringan",
+             Start="2025-09-01", Finish="2025-09-10",
+             Detail="Pasang industrial PC, switch, firewall, UPS di control room."),
+        dict(Fase="Integrasi DCS", Task="Fase 2: Konfigurasi OPC-UA & Exaquantum",
+             Start="2025-09-08", Finish="2025-09-18",
+             Detail="Setup KEPServerEX, mapping tag OPC-UA, verifikasi dengan engineer DCS."),
+        dict(Fase="Software", Task="Fase 3: Deploy INTEGRATE + End-to-End Test",
+             Start="2025-09-15", Finish="2025-09-26",
+             Detail="Install Python env, deploy app, test semua tab & alert dengan data live."),
+        dict(Fase="ML / AI", Task="Fase 4: Retraining ML dengan Data Lokal",
+             Start="2025-09-22", Finish="2025-10-03",
+             Detail="Retrain BiLSTM Autoencoder dengan minimal 30 hari data DCS aktual."),
+        dict(Fase="Training", Task="Fase 5: Training Operator & Engineer",
+             Start="2025-09-30", Finish="2025-10-08",
+             Detail="Pelatihan penggunaan dashboard, interpretasi zona, respons alert."),
+        dict(Fase="Produksi", Task="Fase 6: Go-Live & Monitoring 30 Hari",
+             Start="2025-10-06", Finish="2025-11-05",
+             Detail="Operasional penuh. Monitoring harian, evaluasi false positive rate."),
+    ])
+    _fig_gantt = px.timeline(
+        _gantt_data, x_start="Start", x_end="Finish", y="Task", color="Fase",
+        color_discrete_map={"Infrastruktur": "#2980b9", "Integrasi DCS": "#8e44ad",
+                            "Software": "#16a085", "ML / AI": "#d35400",
+                            "Training": "#f39c12", "Produksi": "#27ae60"},
+        hover_data={"Detail": True, "Start": True, "Finish": True, "Fase": False},
+        title="Timeline Implementasi INTEGRATE"
+    )
+    _fig_gantt.update_yaxes(autorange="reversed")
+    _fig_gantt.update_layout(
+        paper_bgcolor="#0e1117", plot_bgcolor="#1a1f2e", font=dict(color="white"),
+        height=340, margin=dict(l=10, r=10, t=50, b=10),
+        xaxis=dict(gridcolor="#2a2f3e", title=""),
+        yaxis=dict(gridcolor="#2a2f3e", title=""),
+        legend=dict(bgcolor="#1a1f2e", bordercolor="#444", title="Fase"),
+        title_font=dict(color="#00b4d8", size=14)
+    )
+    st.plotly_chart(_fig_gantt, use_container_width=True)
+
+    _ch1, _ch2 = st.columns(2)
+    with _ch1:
+        st.markdown("**Pre-Deployment Checklist**")
+        for _item in [
+            "Rack server di control room tersedia & berventilasi",
+            "Jaringan industrial LAN terpasang & tested",
+            "OPC-UA server Exaquantum aktif & accessible",
+            "Tag mapping diverifikasi bersama engineer DCS",
+            "Firewall rules dikonfigurasi (whitelist IP server)",
+            "UPS terpasang, battery tested, runtime >= 30 menit",
+            "Python 3.11 + semua dependencies terinstall",
+            "INTEGRATE startup berhasil, load data dari OPC-UA",
+        ]:
+            st.markdown(f"- [ ] {_item}")
+    with _ch2:
+        st.markdown("**Post Go-Live Checklist**")
+        for _item in [
+            "Dashboard diakses dari semua workstation operator",
+            "Email alert terkirim saat uji anomali manual",
+            "ML model di-retrain dengan data DCS 30+ hari",
+            "Surge detection diverifikasi oleh process engineer",
+            "Backup otomatis SQLite database berjalan (cron)",
+            "Uptime monitoring terpasang (Supervisor + Nagios)",
+            "Dokumentasi O&M diserahkan ke tim operasi",
+            "Jadwal retraining model ditetapkan (setiap 3 bulan)",
+        ]:
+            st.markdown(f"- [ ] {_item}")
+
+    # ── SECTION 6: Network Topology ──────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 🌐 Topologi Jaringan Industrial")
+
+    _fig_net = go.Figure()
+    _fig_net.update_layout(
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1, 11]),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1, 8]),
+        height=420, paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
+        margin=dict(l=10, r=10, t=40, b=10),
+        title=dict(text="Network Topology — INTEGRATE Field Deployment",
+                   font=dict(color="#00b4d8", size=13))
+    )
+    _nodes = [
+        (1.0, 1.0, "Sensor\nC-1001B", "#27ae60", 0.7),
+        (1.0, 3.0, "Sensor\nP-1001A", "#27ae60", 0.7),
+        (3.5, 2.0, "Yokogawa\nCS3000 DCS", "#8e44ad", 0.9),
+        (5.5, 2.0, "Exaquantum\nHistorian", "#2980b9", 0.9),
+        (5.5, 4.5, "Firewall\nIndustrial", "#e74c3c", 0.7),
+        (7.5, 2.0, "INTEGRATE\nEdge Server", "#16a085", 1.0),
+        (7.5, 4.5, "Industrial\nSwitch LAN", "#f39c12", 0.7),
+        (9.5, 1.0, "Operator\nWS 1", "#00b4d8", 0.6),
+        (9.5, 3.0, "Operator\nWS 2", "#00b4d8", 0.6),
+        (9.5, 5.0, "VPN\nHead Office", "#9b59b6", 0.6),
+    ]
+    _edges = [
+        (0, 2, "4-20mA"), (1, 2, "HART"), (2, 3, "OPC-DA"), (3, 4, "DMZ"),
+        (4, 6, "Firewall"), (3, 5, "OPC-UA"), (5, 6, "Eth"),
+        (6, 7, "HTTP"), (6, 8, "HTTP"), (6, 9, "VPN"),
+    ]
+    for (_x1, _y1, _, _c1, _), (_x2, _y2, _, _c2, _), _lbl in [
+        (_nodes[_e[0]], _nodes[_e[1]], _e[2]) for _e in _edges
+    ]:
+        _xm, _ym = (_x1 + _x2) / 2, (_y1 + _y2) / 2
+        _fig_net.add_shape(type="line", x0=_x1, y0=_y1, x1=_x2, y1=_y2,
+                           line=dict(color="#444", width=1.5, dash="dot"))
+        _fig_net.add_annotation(x=_xm, y=_ym, text=f"<i>{_lbl}</i>",
+                                font=dict(color="#888", size=8), showarrow=False)
+
+    def _hex_to_rgba(h, a=0.2):
+        h = h.lstrip("#")
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        return f"rgba({r},{g},{b},{a})"
+
+    for _nx, _ny, _lbl, _color, _r in _nodes:
+        _fig_net.add_shape(type="circle",
+                           x0=_nx - _r, y0=_ny - _r * 0.6,
+                           x1=_nx + _r, y1=_ny + _r * 0.6,
+                           fillcolor=_hex_to_rgba(_color, 0.2),
+                           line=dict(color=_color, width=2))
+        _fig_net.add_annotation(x=_nx, y=_ny, text=f"<b>{_lbl}</b>",
+                                font=dict(color="white", size=9), showarrow=False)
+    st.plotly_chart(_fig_net, use_container_width=True)
+
+    st.success(
+        "**INTEGRATE siap deploy ke lapangan tanpa biaya lisensi software tambahan. "
+        "Seluruh stack menggunakan open-source. Estimasi total biaya hardware: "
+        "Rp 180 juta – Rp 250 juta (termasuk industrial PC, switch, firewall, UPS, workstation).**"
+    )
+
+    # ── SECTION 7: 3D Hardware Mockup ────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 🖼️ Ilustrasi 3D — Mock-up Instalasi Hardware Lapangan")
+    st.caption("Ilustrasi interaktif — klik & drag untuk merotasi, scroll untuk zoom, klik legend untuk sembunyikan/tampilkan item.")
+
+    def _box3d(x0, y0, z0, x1, y1, z1, color, name, opacity=0.80):
+        vx = [x0, x1, x1, x0, x0, x1, x1, x0]
+        vy = [y0, y0, y1, y1, y0, y0, y1, y1]
+        vz = [z0, z0, z0, z0, z1, z1, z1, z1]
+        ii = [0, 0, 4, 4, 0, 0, 2, 2, 0, 0, 1, 1]
+        jj = [1, 2, 5, 6, 1, 5, 3, 7, 3, 7, 2, 6]
+        kk = [2, 3, 6, 7, 5, 4, 7, 6, 7, 4, 6, 5]
+        return go.Mesh3d(x=vx, y=vy, z=vz, i=ii, j=jj, k=kk,
+                         color=color, opacity=opacity, name=name,
+                         showlegend=True, flatshading=True, hoverinfo="name")
+
+    def _line3d(xs, ys, zs, color, name, width=4):
+        return go.Scatter3d(x=xs, y=ys, z=zs, mode="lines",
+                            line=dict(color=color, width=width),
+                            name=name, showlegend=True)
+
+    def _label3d(xs, ys, zs, texts, color="white", size=11):
+        return go.Scatter3d(x=xs, y=ys, z=zs, mode="text",
+                            text=texts, textfont=dict(color=color, size=size),
+                            showlegend=False, hoverinfo="skip")
+
+    _dark_scene = dict(
+        xaxis=dict(showgrid=False, showticklabels=False, title="",
+                   backgroundcolor="#0e1117", showbackground=True, zeroline=False),
+        yaxis=dict(showgrid=False, showticklabels=False, title="",
+                   backgroundcolor="#0e1117", showbackground=True, zeroline=False),
+        zaxis=dict(showgrid=False, showticklabels=False, title="",
+                   backgroundcolor="#0e1117", showbackground=True, zeroline=False),
+        bgcolor="#0e1117",
+    )
+
+    with st.expander("🏢  Ilustrasi 3D — Ruang Kontrol & Server Rack", expanded=True):
+        _cr = go.Figure()
+        _cr.add_trace(_box3d(0, 0, -0.06, 11, 7, 0, "#1a1a2e", "Lantai Ruang Kontrol", 0.45))
+        _cr.add_trace(_box3d(0, 6.9, 0, 11, 7.0, 3.0, "#12122a", "Dinding Belakang", 0.30))
+        _cr.add_trace(_box3d(-0.1, 0, 0, 0.0, 7, 3.0, "#12122a", "Dinding Kiri", 0.30))
+        _cr.add_trace(_box3d(0.3, 0.3, 0, 1.2, 1.1, 2.1, "#2c3e50", "Lemari Rack Server", 0.90))
+        _cr.add_trace(_box3d(0.35, 0.32, 0.08, 1.15, 1.08, 0.55, "#8e44ad", "UPS 1500VA", 0.95))
+        _cr.add_trace(_box3d(0.35, 0.32, 0.60, 1.15, 1.08, 0.76, "#2980b9", "Industrial Switch (Cisco IE-2000)", 0.95))
+        _cr.add_trace(_box3d(0.35, 0.32, 0.78, 1.15, 1.08, 0.94, "#e74c3c", "Industrial Firewall", 0.95))
+        _cr.add_trace(_box3d(0.35, 0.32, 0.96, 1.15, 1.08, 1.12, "#f39c12", "OPC-UA Gateway (KEPServerEX)", 0.95))
+        _cr.add_trace(_box3d(0.35, 0.32, 1.20, 1.15, 1.08, 1.55, "#16a085", "INTEGRATE Edge Server (ADVANTECH)", 0.98))
+        _cr.add_trace(_box3d(0.32, 0.30, 1.56, 1.18, 0.34, 1.58, "#00ff88", "Status LED (Online)", 0.9))
+        _cr.add_trace(_box3d(2.5, 0.2, 0, 5.2, 1.3, 0.76, "#34495e", "Meja Operator 1", 0.65))
+        _cr.add_trace(_box3d(2.6, 0.55, 0, 3.05, 1.15, 0.42, "#2c3e50", "PC Tower Operator 1", 0.85))
+        _cr.add_trace(_box3d(3.2, 0.28, 0.76, 4.9, 0.44, 1.58, "#00b4d8", "Monitor 27\" Op. 1", 0.88))
+        _cr.add_trace(_box3d(3.8, 1.0, 0.76, 4.3, 1.3, 0.82, "#555", "Keyboard Op. 1", 0.7))
+        _cr.add_trace(_box3d(6.0, 0.2, 0, 8.7, 1.3, 0.76, "#34495e", "Meja Operator 2", 0.65))
+        _cr.add_trace(_box3d(6.1, 0.55, 0, 6.55, 1.15, 0.42, "#2c3e50", "PC Tower Operator 2", 0.85))
+        _cr.add_trace(_box3d(6.8, 0.28, 0.76, 8.5, 0.44, 1.58, "#00b4d8", "Monitor 27\" Op. 2", 0.88))
+        _cr.add_trace(_box3d(7.3, 1.0, 0.76, 7.8, 1.3, 0.82, "#555", "Keyboard Op. 2", 0.7))
+        _cr.add_trace(_box3d(1.2, 0.55, 1.98, 8.7, 0.75, 2.04, "#7f8c8d", "Cable Tray LAN (Plafon)", 0.60))
+        _cr.add_trace(_line3d([0.75, 0.75, 4.05, 4.05], [0.65, 0.65, 0.65, 0.36],
+                              [1.48, 2.01, 2.01, 0.76], "#f39c12", "Kabel LAN ke WS 1"))
+        _cr.add_trace(_line3d([0.75, 0.75, 7.25, 7.25], [0.65, 0.65, 0.65, 0.36],
+                              [1.48, 2.01, 2.01, 0.76], "#e67e22", "Kabel LAN ke WS 2"))
+        _cr.add_trace(_line3d([0.30, -0.5, -0.5], [0.70, 0.70, 0.70],
+                              [1.10, 1.10, 1.10], "#8e44ad", "OPC-UA ke Exaquantum/DCS"))
+        _cr.add_trace(_line3d([0.75, 0.75], [1.10, 7.0], [0.06, 0.06],
+                              "#e74c3c", "Kabel Power (PLN + UPS)"))
+        _cr.add_trace(_label3d([0.75, 4.05, 7.25, -0.8], [2.25, 0.3, 0.3, 0.70],
+                               [2.30, 1.70, 1.70, 1.30],
+                               ["SERVER RACK", "WORKSTATION 1", "WORKSTATION 2", "ke DCS"],
+                               color="#00b4d8", size=12))
+        _cr.update_layout(
+            scene=dict(**_dark_scene, camera=dict(eye=dict(x=1.6, y=-2.2, z=1.3)),
+                       aspectratio=dict(x=2.2, y=1.5, z=0.7)),
+            paper_bgcolor="#0e1117", height=520, margin=dict(l=0, r=0, t=40, b=0),
+            legend=dict(bgcolor="#1a1f2e", bordercolor="#444",
+                        font=dict(color="white", size=10), x=0.0, y=1.0),
+            title=dict(text="3D Mock-up — Ruang Kontrol INTEGRATE (Control Room)",
+                       font=dict(color="#00b4d8", size=13))
+        )
+        st.plotly_chart(_cr, use_container_width=True)
+        st.caption("Klik & drag untuk rotasi | Scroll zoom | Klik nama di legend untuk sembunyikan item")
+
+    if is_pump:
+        with st.expander("🔩  Ilustrasi 3D — Pemasangan Sensor pada P-1001A (DMF Pump)", expanded=True):
+            _eq = go.Figure()
+            _eq.add_trace(_box3d(-0.2, 0.0, 0.0,  4.3, 2.5, 0.45, "#7f8c8d", "P-1001A: Baseplate", 0.55))
+            _eq.add_trace(_box3d(0.0,  0.3, 0.45, 2.3, 2.2, 1.42, "#2c3e50", "P-1001A: Casing Pompa", 0.78))
+            _eq.add_trace(_box3d(2.3,  0.4, 0.45, 4.1, 2.1, 1.32, "#1a252f", "P-1001A: Motor Listrik", 0.82))
+            _eq.add_trace(_box3d(-1.2, 0.8, 0.60, 0.0,  1.3, 1.10, "#3d566e", "P-1001A: Suction Pipe", 0.80))
+            _eq.add_trace(_box3d(0.8,  2.2, 0.88, 1.4,  2.80, 1.42, "#3d566e", "P-1001A: Discharge Pipe", 0.80))
+            _eq.add_trace(_box3d(2.1,  1.6, 0.85, 2.35, 2.0, 1.25, "#555", "P-1001A: Coupling Guard", 0.60))
+            _eq.add_trace(_box3d(-1.80, 0.82, 0.58, -1.20, 1.28, 1.08, "#f39c12", "FT-201: Coriolis Flow Meter", 1.0))
+            _eq.add_trace(_box3d(-0.85, 0.90, 0.95, -0.58, 1.22, 1.18, "#e74c3c", "PT-201: Suction Press Tx", 1.0))
+            _eq.add_trace(_box3d(0.85,  2.22, 1.12,  1.12, 2.55, 1.38, "#e74c3c", "PT-202: Discharge Press Tx", 1.0))
+            _eq.add_trace(_box3d(0.1,   0.10, 1.28,  0.42, 0.38, 1.50, "#3498db", "TT-201: Temperature RTD", 1.0))
+            _eq.add_trace(_box3d(3.10,  0.25, 1.10,  3.40, 0.55, 1.35, "#9b59b6", "IT-201: Motor Current Sensor", 1.0))
+            _eq.add_trace(_box3d(0.10,  2.05, 0.88,  0.38, 2.32, 1.10, "#27ae60", "PT-203: Seal Pressure Tx", 1.0))
+            _eq.add_trace(_box3d(3.60, 2.20, 0.80,  4.20, 2.70, 1.35, "#f1c40f", "JB-P1001A: Junction Box", 0.90))
+            for _xs, _ys, _zs in [
+                ([-1.50, 3.90], [1.05, 2.45], [0.83, 1.08]),
+                ([-0.72, 3.90], [1.06, 2.45], [1.07, 1.08]),
+                ([0.99,  3.90], [2.39, 2.45], [1.25, 1.08]),
+                ([0.26,  3.90], [0.24, 2.45], [1.39, 1.08]),
+            ]:
+                _eq.add_trace(go.Scatter3d(x=_xs, y=_ys, z=_zs, mode="lines",
+                                           line=dict(color="#aaaaaa", width=1.5),
+                                           showlegend=False, hoverinfo="skip"))
+            _eq.add_trace(_label3d(
+                [1.15, -1.50, -0.72, 0.99, 0.26, 3.25, 3.25, 3.90],
+                [0.25, 1.05, 1.06, 2.39, 0.24, 0.30, 0.30, 2.60],
+                [1.55, 1.22, 1.32, 1.52, 1.65, 1.22, 0.85, 1.38],
+                ["P-1001A", "FT-201", "PT-201", "PT-202", "TT-201", "IT-201", "PT-203", "JB"],
+                color="#00b4d8", size=10))
+            _eq.update_layout(
+                scene=dict(**_dark_scene, camera=dict(eye=dict(x=1.8, y=-2.8, z=1.6)),
+                           aspectratio=dict(x=2.0, y=1.5, z=0.55)),
+                paper_bgcolor="#0e1117", height=520, margin=dict(l=0, r=0, t=40, b=0),
+                legend=dict(bgcolor="#1a1f2e", bordercolor="#444",
+                            font=dict(color="white", size=9), x=0.0, y=1.0, itemsizing="constant"),
+                title=dict(text="3D Mock-up — Pemasangan Sensor P-1001A (DMF Pump)",
+                           font=dict(color="#00b4d8", size=13))
+            )
+            st.plotly_chart(_eq, use_container_width=True)
+            st.markdown("**Kode Warna Sensor:**")
+            _lcols = st.columns(5)
+            for _col, (_clr, _lbl) in zip(_lcols, [
+                ("#e74c3c", "Pressure Transmitter (PT)"), ("#f39c12", "Flow Meter (FT)"),
+                ("#3498db", "Temperature RTD (TT)"), ("#9b59b6", "Motor Current (IT)"),
+                ("#27ae60", "Seal Pressure (PT)"),
+            ]):
+                with _col:
+                    st.markdown(
+                        f"<div style='background:{_clr}33; border:2px solid {_clr}; "
+                        f"border-radius:6px; padding:6px 8px; text-align:center; "
+                        f"color:white; font-size:12px'>{_lbl}</div>",
+                        unsafe_allow_html=True
+                    )
+            st.caption("Junction Box kuning = titik pengumpulan kabel sinyal sebelum masuk ke DCS panel.")
+
+    else:
+        with st.expander("🔩  Ilustrasi 3D — Pemasangan Sensor pada C-1001B (BCL305 Compressor)", expanded=True):
+            _eq = go.Figure()
+            _eq.add_trace(_box3d(-0.3, 0.5, 0.0,  7.2, 3.5, 0.45, "#7f8c8d", "C-1001B: Baseplate", 0.55))
+            _eq.add_trace(_box3d(0.0,  1.0, 0.45, 4.8, 3.0, 1.85, "#2c3e50", "C-1001B: Casing Kompresor (BCL305)", 0.78))
+            _eq.add_trace(_box3d(-1.0, 1.7, 0.85, 0.0, 2.3, 1.45, "#3d566e", "C-1001B: Inlet Nozzle", 0.80))
+            _eq.add_trace(_box3d(4.8,  1.7, 1.30, 5.6, 2.3, 1.85, "#3d566e", "C-1001B: Discharge Nozzle", 0.80))
+            _eq.add_trace(_box3d(4.8,  1.0, 0.45, 7.0, 3.0, 1.65, "#1a252f", "C-1001B: Motor Penggerak", 0.82))
+            _eq.add_trace(_box3d(4.5,  1.6, 0.85, 4.8, 2.4, 1.35, "#555",    "C-1001B: Coupling Guard",  0.60))
+            _eq.add_trace(_box3d(-0.8, 1.90, 1.10, -0.50, 2.25, 1.38, "#e74c3c", "PT-101: Suction Press. Tx", 1.0))
+            _eq.add_trace(_box3d(4.82, 1.90, 1.42,  5.12, 2.25, 1.70, "#e74c3c", "PT-102: Discharge Press. Tx", 1.0))
+            _eq.add_trace(_box3d(-1.80, 1.75, 0.82, -1.00, 2.25, 1.42, "#f39c12", "FT-101: Coriolis Flow Meter", 1.0))
+            _eq.add_trace(_box3d(-0.75, 1.55, 0.88, -0.48, 1.80, 1.10, "#3498db", "TT-101: Suction Temp RTD", 1.0))
+            _eq.add_trace(_box3d(4.82, 1.55, 1.08,  5.12, 1.80, 1.30, "#3498db", "TT-102: Discharge Temp RTD", 1.0))
+            _eq.add_trace(_box3d(4.82, 2.90, 1.00,  5.12, 3.20, 1.28, "#9b59b6", "ST-101: Speed Sensor", 1.0))
+            _eq.add_trace(_box3d(2.00, 3.00, 1.55,  2.40, 3.30, 1.85, "#27ae60", "VT-101: Vibration Probe", 1.0))
+            _eq.add_trace(_box3d(6.50, 3.00, 1.00,  7.10, 3.50, 1.55, "#f1c40f", "JB-C1001B: Junction Box", 0.90))
+            for _xs, _ys, _zs in [
+                ([-0.65, 6.80], [2.075, 3.25], [1.24, 1.28]),
+                ([4.97, 6.80],  [2.075, 3.25], [1.56, 1.28]),
+                ([-1.40, 6.80], [2.00,  3.25], [1.12, 1.28]),
+                ([-0.615,6.80], [1.675, 3.25], [0.99, 1.28]),
+            ]:
+                _eq.add_trace(go.Scatter3d(x=_xs, y=_ys, z=_zs, mode="lines",
+                                           line=dict(color="#aaaaaa", width=1.5),
+                                           showlegend=False, hoverinfo="skip"))
+            _eq.add_trace(_label3d(
+                [2.4, -0.65, 4.97, -1.4, -0.615, 2.20, 5.10, 6.80],
+                [0.50, 2.075, 2.075, 2.00, 1.675, 3.15, 3.25, 3.35],
+                [2.10, 1.45, 1.82, 1.55, 1.22, 2.00, 1.20, 1.65],
+                ["C-1001B\n(BCL305)", "PT-101", "PT-102", "FT-101", "TT-101", "VT-101", "ST-101", "JB"],
+                color="#00b4d8", size=10))
+            _eq.update_layout(
+                scene=dict(**_dark_scene, camera=dict(eye=dict(x=1.8, y=-2.8, z=1.6)),
+                           aspectratio=dict(x=2.0, y=1.5, z=0.55)),
+                paper_bgcolor="#0e1117", height=540, margin=dict(l=0, r=0, t=40, b=0),
+                legend=dict(bgcolor="#1a1f2e", bordercolor="#444",
+                            font=dict(color="white", size=9), x=0.0, y=1.0, itemsizing="constant"),
+                title=dict(text="3D Mock-up — Pemasangan Sensor C-1001B (BCL305 Compressor)",
+                           font=dict(color="#00b4d8", size=13))
+            )
+            st.plotly_chart(_eq, use_container_width=True)
+            st.markdown("**Kode Warna Sensor:**")
+            _lcols = st.columns(5)
+            for _col, (_clr, _lbl) in zip(_lcols, [
+                ("#e74c3c", "Pressure Transmitter (PT)"), ("#f39c12", "Flow Meter (FT)"),
+                ("#3498db", "Temperature RTD (TT)"), ("#9b59b6", "Speed Sensor (ST)"),
+                ("#27ae60", "Vibration Probe (VT)"),
+            ]):
+                with _col:
+                    st.markdown(
+                        f"<div style='background:{_clr}33; border:2px solid {_clr}; "
+                        f"border-radius:6px; padding:6px 8px; text-align:center; "
+                        f"color:white; font-size:12px'>{_lbl}</div>",
+                        unsafe_allow_html=True
+                    )
+            st.caption("Junction Box kuning = titik pengumpulan kabel sinyal sebelum masuk ke DCS panel.")
